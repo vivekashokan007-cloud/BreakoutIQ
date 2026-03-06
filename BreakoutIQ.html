@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0f1e">
+<meta name="description" content="Breakout Stock Scanner - Varsity-based swing trading system">
+<link rel="manifest" href="manifest.json">
+<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
+<title>BreakoutIQ — Smart Stock Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="BreakoutIQ.css">
+</head>
+</head>
+<body>
+
+<!-- Notification -->
+<div class="notification" id="notification">
+  <div class="notification-title" id="notif-title">Signal Found!</div>
+  <div class="notification-msg" id="notif-msg">Stock added to watchlist</div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-drag"></div>
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <h3 id="modal-stock">RELIANCE</h3>
+    <div class="modal-sub" id="modal-sector">NSE · Large Cap · Energy</div>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      BreakoutIQ
+      <span>VARSITY-BASED SWING SCANNER</span>
+    </div>
+    <div class="header-meta">
+      <div class="capital-badge">Capital: <span id="capital-display">₹1,10,000</span></div>
+      <button class="sync-btn" id="sync-header-btn" onclick="openSyncModal()">
+        <div class="sync-dot" id="sync-header-dot"></div>
+        <span id="sync-header-label">Sync</span>
+      </button>
+      <div class="status-dot" title="Scanner Active"></div>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="container" style="padding-top:20px; padding-bottom:40px;">
+
+  <!-- NAV -->
+  <div class="bottom-nav">
+    <button class="nav-tab active" onclick="showPage('scanner',this)">
+      <span class="nav-icon">📡</span><span class="nav-label">Scanner</span>
+    </button>
+    <button class="nav-tab" onclick="showPage('nse',this)">
+      <span class="nav-icon">📂</span><span class="nav-label">NSE Data</span>
+    </button>
+    <button class="nav-tab" onclick="showPage('weekly',this)">
+      <span class="nav-icon">📅</span><span class="nav-label">Weekly</span>
+    </button>
+    <button class="nav-tab" onclick="showPage('risk',this)">
+      <span class="nav-icon">⚖️</span><span class="nav-label">Risk</span>
+    </button>
+    <button class="nav-tab" onclick="showPage('checklist',this)">
+      <span class="nav-icon">✅</span><span class="nav-label">Checks</span>
+    </button>
+    <button class="nav-tab" onclick="showPage('journal',this)">
+      <span class="nav-icon">📒</span><span class="nav-label">Journal</span>
+    </button>
+  </div>
+
+  <!-- ======= SCANNER PAGE ======= -->
+  <div class="page active" id="page-scanner">
+
+    <!-- Market Context -->
+    <div class="market-bar">
+      <div class="market-item">
+        <span class="market-label">NIFTY 50</span>
+        <span class="market-val" id="nifty-val">22,450</span>
+        <span class="change-pos" id="nifty-chg">▲ 0.45%</span>
+      </div>
+      <div class="mbar-divider"></div>
+      <div class="market-item">
+        <span class="market-label">BANKNIFTY</span>
+        <span class="market-val" id="bnf-val">47,120</span>
+        <span class="change-pos" id="bnf-chg">▲ 0.32%</span>
+      </div>
+      <div class="mbar-divider"></div>
+      <div class="market-item">
+        <span class="market-label">Market Trend</span>
+        <span class="badge badge-green" id="mkt-trend">BULLISH</span>
+      </div>
+      <div class="mbar-divider"></div>
+      <div class="market-item">
+        <span class="market-label">Trading Window</span>
+        <span class="market-val" id="window-status" style="color:var(--warn)">—</span>
+      </div>
+    </div>
+
+    <!-- Alerts Banner -->
+    <div class="alerts-banner" id="alerts-banner">
+      <div class="alert-dot"></div>
+      <div><strong id="alert-count">0 stocks</strong> match breakout criteria today · Scan last run: <span id="last-scan">—</span></div>
+    </div>
+
+    <!-- Stat Cards -->
+    <div class="scanner-header">
+      <div class="stat-card">
+        <div class="stat-label">Breakout Signals</div>
+        <div class="stat-value cyan" id="stat-signals">0</div>
+        <div class="stat-sub">High probability setups</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Watchlist Stocks</div>
+        <div class="stat-value green" id="stat-watch">0</div>
+        <div class="stat-sub">In your tracking list</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-label">Open Trades</div>
+        <div class="stat-value orange" id="stat-trades">0</div>
+        <div class="stat-sub">Capital deployed</div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <button class="filter-toggle-btn" id="scanner-filter-btn" onclick="toggleFilterPanel('scanner-filter-body','scanner-filter-btn')">
+        <span>⚙️ Filters & Settings</span>
+        <span class="arrow">▾</span>
+      </button>
+      <div class="filter-body" id="scanner-filter-body">
+        <div class="filter-grid">
+          <div class="filter-group">
+            <div class="filter-label">Min Price (₹)</div>
+            <input type="number" class="filter-input" id="f-minprice" value="100">
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">Max Price (₹)</div>
+            <input type="number" class="filter-input" id="f-maxprice" value="1500">
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">Min Vol Ratio</div>
+            <input type="number" class="filter-input" id="f-vol" value="1.5" step="0.1">
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">Signal Strength</div>
+            <select class="filter-select" id="f-signal">
+              <option value="0">All Signals</option>
+              <option value="60">Strong 60%+</option>
+              <option value="75" selected>Very Strong 75%+</option>
+              <option value="90">Elite 90%+</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">Sector</div>
+            <select class="filter-select" id="f-sector">
+              <option value="ALL">All Sectors</option>
+              <option value="IT">IT</option>
+              <option value="PHARMA">Pharma</option>
+              <option value="CAPGOODS">Capital Goods</option>
+              <option value="DEFENCE">Defence</option>
+              <option value="INFRA">Infrastructure</option>
+              <option value="BANKING">Banking</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">My Capital (₹)</div>
+            <input type="number" class="filter-input" id="f-capital" value="110000">
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-secondary flex-1" onclick="resetFilters()">↺ Reset</button>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-full mt-12" onclick="runScanner()">⚡ SCAN NOW</button>
+    </div>
+
+    <!-- Results Table -->
+    <div class="table-wrap">
+      <div class="table-title">
+        <h3>BREAKOUT CANDIDATES</h3>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="badge badge-cyan" id="result-count">0 results</span>
+          <button class="btn-xs btn-xs-cyan" onclick="exportWatchlist()">↗ Export</button>
+        </div>
+      </div>
+      <!-- Mobile cards -->
+      <div class="mobile-cards" id="scanner-mobile-cards">
+        <div class="empty-state"><div class="empty-icon">📡</div><div class="empty-title">Scanner Ready</div><div class="empty-sub">Hit SCAN NOW to find breakout opportunities</div></div>
+      </div>
+      <!-- Desktop table -->
+      <div class="desktop-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Stock</th><th>Price</th><th>Chg%</th><th>Score</th><th>Volume</th><th>RSI</th><th>Pattern</th><th>Target</th><th>SL</th><th>R:R</th><th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="scanner-tbody">
+            <tr class="loading-row"><td colspan="11"><div class="empty-state"><div class="empty-icon">📡</div><div class="empty-title">Scanner Ready</div><div class="empty-sub">Hit SCAN NOW to find breakout opportunities</div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Watchlist -->
+    <div style="margin-top:20px;">
+      <div class="table-title" style="background:var(--card);border:1px solid var(--border);border-radius:12px 12px 0 0;border-bottom:none;">
+        <h3 style="font-family:'Syne';font-size:0.9rem;font-weight:700;">MY WATCHLIST</h3>
+        <button class="btn btn-secondary" style="padding:4px 12px;font-size:0.7rem;" onclick="clearWatchlist()">Clear All</button>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:0 0 12px 12px;padding:16px;">
+        <div class="watchlist-tags" id="watchlist-tags">
+          <span style="font-size:0.75rem;color:var(--text3);">No stocks added yet. Scan and add to watchlist.</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ======= RISK CALCULATOR PAGE ======= -->
+  <div class="page" id="page-risk">
+    <div class="risk-grid">
+
+      <div class="risk-card">
+        <h3>Position Sizer</h3>
+        <p style="font-size:0.72rem;color:var(--text3);margin-bottom:20px;">Based on Varsity Module 9 — 2% Rule</p>
+        <div class="form-row">
+          <label class="form-label">Total Capital (₹)</label>
+          <input type="number" class="form-input" id="r-capital" value="110000" oninput="calcRisk()">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Risk Per Trade (%)</label>
+          <input type="number" class="form-input" id="r-risk" value="2" step="0.5" min="0.5" max="5" oninput="calcRisk()">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Entry Price (₹)</label>
+          <input type="number" class="form-input" id="r-entry" placeholder="e.g. 500" oninput="calcRisk()">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Stop Loss Price (₹)</label>
+          <input type="number" class="form-input" id="r-sl" placeholder="e.g. 480" oninput="calcRisk()">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Target Price (₹)</label>
+          <input type="number" class="form-input" id="r-target" placeholder="e.g. 540" oninput="calcRisk()">
+        </div>
+
+        <div class="result-box" id="risk-result">
+          <div class="result-row">
+            <span class="result-key">Max Risk Amount</span>
+            <span class="result-val cyan" id="r-maxrisk">₹2,200</span>
+          </div>
+          <hr class="divider">
+          <div class="result-row">
+            <span class="result-key">Shares to Buy</span>
+            <span class="result-val green" id="r-shares">—</span>
+          </div>
+          <div class="result-row">
+            <span class="result-key">Capital Required</span>
+            <span class="result-val cyan" id="r-capreq">—</span>
+          </div>
+          <div class="result-row">
+            <span class="result-key">% Capital Used</span>
+            <span class="result-val orange" id="r-cappct">—</span>
+          </div>
+          <hr class="divider">
+          <div class="result-row">
+            <span class="result-key">Potential Gain</span>
+            <span class="result-val green" id="r-gain">—</span>
+          </div>
+          <div class="result-row">
+            <span class="result-key">Potential Loss</span>
+            <span class="result-val danger" id="r-loss">—</span>
+          </div>
+          <div class="result-row">
+            <span class="result-key">Risk : Reward</span>
+            <span class="result-val" id="r-rr" style="color:var(--warn);">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="risk-card" style="margin-bottom:20px;">
+          <h3>Capital Allocation Map</h3>
+          <p style="font-size:0.72rem;color:var(--text3);margin-bottom:20px;">Optimal split for ₹1,10,000 capital</p>
+          <div id="allocation-display"></div>
+        </div>
+
+        <div class="risk-card">
+          <h3>Risk Rules (Module 9)</h3>
+          <ul class="checklist" style="margin-top:0;">
+            <li class="check-item"><span>🔴</span><span class="check-text"><strong>2% Rule</strong> — Never risk more than 2% of total capital on any single trade (₹<span id="two-pct">2,200</span> max risk)</span></li>
+            <li class="check-item"><span>🟡</span><span class="check-text"><strong>5% Daily Stop</strong> — If daily P&L hits -5% (₹<span id="five-pct">5,500</span>), stop trading for the day</span></li>
+            <li class="check-item"><span>🟢</span><span class="check-text"><strong>Max 3 Positions</strong> — Never hold more than 3 open positions at once with ₹1.10L capital</span></li>
+            <li class="check-item"><span>🔵</span><span class="check-text"><strong>1:2 Minimum RR</strong> — Only enter trades where reward is at least 2x the risk. 1:3 is ideal.</span></li>
+            <li class="check-item"><span>🟣</span><span class="check-text"><strong>Position Reserve</strong> — Keep 10% capital (₹11,000) as buffer for brokerage, taxes, and slippage</span></li>
+            <li class="check-item"><span>⚡</span><span class="check-text"><strong>GTT Orders</strong> — Set stop-loss via GTT on Upstox immediately after entry. Never watch manually.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= CHECKLIST PAGE ======= -->
+  <div class="page" id="page-checklist">
+    <div class="risk-grid">
+      <div class="risk-card">
+        <h3>Pre-Trade Entry Checklist</h3>
+        <p style="font-size:0.72rem;color:var(--text3);margin-bottom:16px;">Module 2 + Module 10 — Run this before every trade</p>
+        <ul class="checklist" id="entry-checklist">
+          <li class="check-item" data-check="1">
+            <div class="check-icon" onclick="toggleCheck(this)"></div>
+            <span class="check-text"><strong>Consolidation Zone</strong> — Stock has been sideways for 5–15 trading days in a tight range (less than 5% range)</span>
+          </li>
+          <li class="check-item" data-check="2">
+            <div class="check-icon" onclick="toggleCheck(this)"></div>
+            <span class="check-text"><strong>Clean Resistance Level</strong> — The breakout level has been tested 2–3 times previously. More tests = stronger breakout when it breaks.</span>
+          </li>
+          <li class="check-item" data-check="3">
+            <div class="check-icon" onclick="toggleCheck(this)"></div>
+            <span class="check-text"><strong>Volume Confirmation</strong> — Breakout candle volume is at least 1.5x the 20-day average volume</span>
+          </li>
+          <li class="check-item" data-check="4">
+            <div class="check-icon" onclick="toggleCheck(this)"></div>
+            <span class="check-text"><strong>Nifty Health Check</strong> — Nifty50 is not in a downtrend (above its 20-EMA). Avoid buying breakouts in a falling index.</span>
+          </li>
+          <li class="check-item" data-check="5">
+            <div class="check-icon" onclick="toggleCheck(this)"></div>
+            <span class="check-text"><strong>RSI Zone</strong> — RSI(14) is between 50–70. Below 50 = weak momentum. Above 80 = overbought risk.</span>
+          </li>
+          <li class="check-item" data-check="6">
+            <div class="check-icon" onclick="toggleCheck(this)"></div>
+            <span class="check-text"><strong>Entry Price Valid</strong> — Buying within 1% of the breakout level. Not chasing a stock that's already moved 3–5%.</span>
+          </li>
+          <li class="check-item" data-check="7">
+            <div class="check-icon" onclick="toggleCheck(this)"></div>
+            <span class="check-text"><strong>Risk:Reward ≥ 1:2</strong> — Stop-loss and target set. Reward must be at least 2x the risk before entering.</span>
+          </li>
+          <li class="check-item" data-check="8">
+            <div class="check-icon" onclick="toggleCheck(this)"></div>
+            <span class="check-text"><strong>Position Size Calculated</strong> — Used the 2% Rule to determine exact number of shares. Not a round guess.</span>
+          </li>
+        </ul>
+        <div style="margin-top:16px;padding:12px;background:var(--bg3);border-radius:8px;text-align:center;">
+          <span style="font-size:0.75rem;color:var(--text2);">Checklist Score: </span>
+          <span style="font-weight:700;color:var(--accent2);" id="checklist-score">0 / 8</span>
+          <span style="font-size:0.72rem;color:var(--text3);display:block;margin-top:4px;" id="checklist-verdict">Complete all checks before entering trade</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="risk-card" style="margin-bottom:20px;">
+          <h3>Exit Checklist</h3>
+          <p style="font-size:0.72rem;color:var(--text3);margin-bottom:16px;">Module 10 — Know when to get out</p>
+          <ul class="checklist" id="exit-checklist">
+            <li class="check-item"><div class="check-icon" onclick="toggleCheck(this)"></div><span class="check-text"><strong>Target 1 Hit</strong> — Book 50% of position at +5 to +7%. Set trailing stop on rest.</span></li>
+            <li class="check-item"><div class="check-icon" onclick="toggleCheck(this)"></div><span class="check-text"><strong>5-Day Rule</strong> — No movement in 5 days? Exit. Capital is better deployed elsewhere.</span></li>
+            <li class="check-item"><div class="check-icon" onclick="toggleCheck(this)"></div><span class="check-text"><strong>Friday Exit</strong> — Exit open positions by Friday close to avoid weekend gap risk.</span></li>
+            <li class="check-item"><div class="check-icon" onclick="toggleCheck(this)"></div><span class="check-text"><strong>Index Red Flag</strong> — If Nifty drops 1.5%+ in a session, exit all open long positions immediately.</span></li>
+            <li class="check-item"><div class="check-icon" onclick="toggleCheck(this)"></div><span class="check-text"><strong>Volume Dry Up</strong> — If stock breaks down on high volume — exit without waiting for stop to hit.</span></li>
+          </ul>
+        </div>
+
+        <div class="risk-card">
+          <h3>Trading Psychology (Module 9)</h3>
+          <ul class="checklist">
+            <li class="check-item"><span>🧠</span><span class="check-text"><strong>No revenge trading</strong> after a loss. Take a 30-min break minimum.</span></li>
+            <li class="check-item"><span>🧠</span><span class="check-text"><strong>Never average down</strong> on a losing position. If stop is hit, accept and move on.</span></li>
+            <li class="check-item"><span>🧠</span><span class="check-text"><strong>Paper trade first</strong> — Run this system for 30 days on paper before deploying real capital.</span></li>
+            <li class="check-item"><span>🧠</span><span class="check-text"><strong>Focus on process</strong> — A losing trade with the right process is better than a winning trade with the wrong process.</span></li>
+            <li class="check-item"><span>🧠</span><span class="check-text"><strong>Journal every trade</strong> — Emotions included. Pattern recognition improves your system over time.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= JOURNAL PAGE ======= -->
+  <div class="page" id="page-journal">
+    <div class="journal-grid">
+      <div class="risk-card trade-form">
+        <h3 style="margin-bottom:16px;">Log a Trade</h3>
+        <div class="form-row">
+          <label class="form-label">Stock Symbol</label>
+          <input type="text" class="form-input" id="j-stock" placeholder="e.g. RELIANCE" style="text-transform:uppercase;">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Entry Date</label>
+          <input type="date" class="form-input" id="j-date">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Entry Price (₹)</label>
+          <input type="number" class="form-input" id="j-entry" placeholder="500">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Quantity</label>
+          <input type="number" class="form-input" id="j-qty" placeholder="33">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Stop Loss (₹)</label>
+          <input type="number" class="form-input" id="j-sl" placeholder="480">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Target (₹)</label>
+          <input type="number" class="form-input" id="j-target" placeholder="540">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Exit Price (₹) — Optional</label>
+          <input type="number" class="form-input" id="j-exit" placeholder="Leave blank if open">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Notes</label>
+          <input type="text" class="form-input" id="j-notes" placeholder="Pattern, reason for entry...">
+        </div>
+        <button class="btn btn-success" style="width:100%;margin-top:8px;" onclick="addTrade()">+ LOG TRADE</button>
+
+        <!-- Journal Stats -->
+        <div style="margin-top:20px;padding:16px;background:var(--bg3);border-radius:10px;">
+          <div style="font-family:'Syne';font-size:0.85rem;font-weight:700;margin-bottom:12px;color:var(--accent);">Performance Summary</div>
+          <div class="result-row"><span class="result-key">Total Trades</span><span class="result-val cyan" id="j-total">0</span></div>
+          <div class="result-row"><span class="result-key">Win Rate</span><span class="result-val green" id="j-winrate">—</span></div>
+          <div class="result-row"><span class="result-key">Total P&L</span><span class="result-val" id="j-pnl">—</span></div>
+          <div class="result-row"><span class="result-key">Avg R:R Achieved</span><span class="result-val orange" id="j-rr">—</span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="table-wrap">
+          <div class="table-title">
+            <h3>TRADE HISTORY</h3>
+            <button class="btn btn-secondary" style="padding:4px 12px;font-size:0.7rem;" onclick="clearJournal()">Clear Journal</button>
+          </div>
+          <div id="trade-list-wrap">
+            <div class="empty-state">
+              <div class="empty-icon">📒</div>
+              <div class="empty-title">No trades logged</div>
+              <div class="empty-sub">Start logging trades to track performance</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= WEEKLY PLAN PAGE ======= -->
+  <div class="page" id="page-weekly">
+    <div class="page-header">
+      <div>
+        <div class="page-title">📅 Weekly Plan</div>
+        <div class="page-sub">Weekend analysis → Monday GTT orders → Let it run</div>
+      </div>
+    </div>
+
+    <!-- Summary stats -->
+    <div class="weekly-summary">
+      <div class="ws-card">
+        <div class="ws-val" id="wl-count">0</div>
+        <div class="ws-label">Candidates</div>
+      </div>
+      <div class="ws-card">
+        <div class="ws-val" id="wl-high-count" style="color:var(--accent2);">0</div>
+        <div class="ws-label">High Conv.</div>
+      </div>
+      <div class="ws-card">
+        <div class="ws-val" id="wl-results-warn" style="color:var(--danger);">0</div>
+        <div class="ws-label">Results Risk</div>
+      </div>
+    </div>
+
+    <!-- Results warning banner (shown if any candidate has results this week) -->
+    <div class="results-warn-banner" id="results-global-warn" style="display:none;">
+      <span style="font-size:1.2rem;flex-shrink:0;">⚠️</span>
+      <div>
+        <strong>Results Season Warning</strong><br>
+        <span id="results-warn-text">Some candidates may announce results this week. Check NSE calendar before placing GTT orders.</span>
+      </div>
+    </div>
+
+    <!-- Weekend Workflow reminder -->
+    <div class="nse-filter-panel" style="margin-bottom:16px;">
+      <button class="nse-filter-toggle" onclick="toggleFilterPanel('workflow-body','workflow-btn')" id="workflow-btn">
+        <span class="toggle-left">🗓️ Weekend Workflow</span>
+        <span class="toggle-arrow">▼</span>
+      </button>
+      <div class="nse-filter-body" id="workflow-body">
+        <div style="display:grid;grid-template-columns:1fr;gap:10px;">
+          <div class="step-card"><div class="step-num" style="background:var(--accent2);">S</div><div class="step-text"><strong>Saturday morning</strong> — Upload week's new Bhavcopy files → Run 🌀 Pre-Breakout scan → Add top candidates here with entry trigger notes</div></div>
+          <div class="step-card"><div class="step-num" style="background:var(--warn);">S</div><div class="step-text"><strong>Sunday evening</strong> — Review candidates, check NSE results calendar for each symbol, set GTT on Upstox: Entry price + Stop Loss + Target</div></div>
+          <div class="step-card"><div class="step-num" style="background:var(--accent);">M</div><div class="step-text"><strong>Monday open</strong> — GTT orders trigger automatically. Do nothing. Let the trade play out during the week.</div></div>
+          <div class="step-card"><div class="step-num" style="background:var(--text3);">F</div><div class="step-text"><strong>Friday close</strong> — Log results in journal. Clear this week's candidates. Start fresh next Saturday.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add candidate form -->
+    <div class="nse-filter-panel" style="margin-bottom:16px;">
+      <button class="nse-filter-toggle" onclick="toggleFilterPanel('add-candidate-body','add-candidate-btn')" id="add-candidate-btn">
+        <span class="toggle-left">➕ Add Weekly Candidate</span>
+        <span class="toggle-arrow">▼</span>
+      </button>
+      <div class="nse-filter-body open" id="add-candidate-body">
+        <div class="nse-form-grid" style="margin-bottom:12px;">
+          <div>
+            <label class="form-label">Symbol *</label>
+            <input type="text" class="form-input" id="wl-sym" placeholder="e.g. REDINGTON" style="text-transform:uppercase;">
+          </div>
+          <div>
+            <label class="form-label">Current Price (₹) *</label>
+            <input type="number" class="form-input" id="wl-price" placeholder="280">
+          </div>
+          <div>
+            <label class="form-label">Entry Trigger (₹)</label>
+            <input type="number" class="form-input" id="wl-entry" placeholder="282">
+          </div>
+          <div>
+            <label class="form-label">Stop Loss (₹)</label>
+            <input type="number" class="form-input" id="wl-sl" placeholder="258">
+          </div>
+          <div>
+            <label class="form-label">Target (₹)</label>
+            <input type="number" class="form-input" id="wl-target" placeholder="325">
+          </div>
+          <div>
+            <label class="form-label">Conviction</label>
+            <select class="form-input" id="wl-conv">
+              <option value="high">⭐ High — R:R 1:2</option>
+              <option value="med">📊 Medium — R:R 1:1.5</option>
+              <option value="low">👀 Watchlist only</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="form-label">Entry Trigger Note — What must happen for you to enter?</label>
+          <input type="text" class="form-input" id="wl-trigger" placeholder="e.g. Break above ₹285 on volume >2x avg with RSI 60+">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="form-label">Setup Type</label>
+          <select class="form-input" id="wl-setup">
+            <option value="coil">🌀 Coiling / Consolidation breakout</option>
+            <option value="pullback">↩️ Pullback to support</option>
+            <option value="momentum">⚡ Momentum continuation</option>
+            <option value="reversal">🔄 Trend reversal</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <input type="checkbox" id="wl-results-risk" style="width:20px;height:20px;cursor:pointer;">
+          <label for="wl-results-risk" style="font-size:0.78rem;color:var(--danger);cursor:pointer;">⚠️ Results expected this week — AVOID or reduce size</label>
+        </div>
+        <button class="btn btn-success" style="width:100%;" onclick="addWeeklyCandidate()">📅 Add to Weekly Plan</button>
+      </div>
+    </div>
+
+    <!-- Candidates list -->
+    <div id="wl-empty" class="empty-state" style="padding:40px 20px;">
+      <div class="empty-icon">📅</div>
+      <div class="empty-title">No candidates yet</div>
+      <div class="empty-sub">Run the 🌀 Pre-Breakout scan in NSE Data tab → Add top picks here with your entry trigger</div>
+    </div>
+    <div id="wl-list"></div>
+
+    <!-- Clear button -->
+    <div style="text-align:center;margin-top:8px;display:none;" id="wl-clear-wrap">
+      <button class="btn btn-secondary" onclick="clearWeeklyCandidates()" style="padding:10px 24px;">🗑 Clear This Week's List</button>
+    </div>
+  </div>
+
+  <!-- ======= NSE DATA PAGE ======= -->
+  <div class="page" id="page-nse">
+    <div class="page-header">
+      <div>
+        <div class="page-title">📂 NSE Data Scanner</div>
+        <div class="page-sub">Upload Bhavcopy CSVs for real breakout analysis</div>
+      </div>
+      <div id="nse-quality-pill" class="quality-pill">No files</div>
+    </div>
+
+    <!-- Scan mode toggle -->
+    <div class="scan-mode-toggle">
+      <button class="scan-mode-btn active" id="mode-breakout" onclick="setScanMode('breakout',this)">
+        ⚡ Breakout<br><span style="font-size:0.58rem;font-weight:400;opacity:0.8;">Already moving</span>
+      </button>
+      <button class="scan-mode-btn" id="mode-coil" onclick="setScanMode('coil',this)">
+        🌀 Pre-Breakout<br><span style="font-size:0.58rem;font-weight:400;opacity:0.8;">Coiling for move</span>
+      </button>
+    </div>
+
+    <!-- Persistent storage status banner -->
+    <div id="nse-storage-banner" style="display:none;background:rgba(0,168,90,0.05);border:1px solid rgba(0,168,90,0.2);border-radius:12px;padding:14px 16px;margin-bottom:16px;"></div>
+
+    <!-- How to get data - collapsible -->
+    <div class="nse-filter-panel mb-16">
+      <button class="nse-filter-toggle" onclick="toggleFilterPanel('nse-guide-body','nse-guide-btn')" id="nse-guide-btn">
+        <span class="toggle-left">📋 <span>How to Download from NSE</span></span>
+        <span class="arrow">▾</span>
+      </button>
+      <div class="nse-filter-body" id="nse-guide-body">
+        <div class="steps-grid">
+          <div style="background:var(--bg3);border-radius:10px;padding:12px;border-left:3px solid var(--accent);">
+            <div style="font-size:0.65rem;color:var(--accent);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Step 1</div>
+            <div style="font-size:0.75rem;color:var(--text2);line-height:1.6;">Go to <strong style="color:var(--text);">nseindia.com</strong><br>→ Market Data<br>→ Historical Data<br>→ Daily Reports</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:10px;padding:12px;border-left:3px solid var(--warn);">
+            <div style="font-size:0.65rem;color:var(--warn);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Step 2</div>
+            <div style="font-size:0.75rem;color:var(--text2);line-height:1.6;">Look for <strong style="color:var(--text);">CM-UDiFF Common Bhavcopy Final (zip)</strong>. Select date range, download &amp; extract the zip.</div>
+          </div>
+          <div style="background:var(--bg3);border-radius:10px;padding:12px;border-left:3px solid var(--accent2);">
+            <div style="font-size:0.65rem;color:var(--accent2);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Step 3</div>
+            <div style="font-size:0.75rem;color:var(--text2);line-height:1.6;">Upload the <strong style="color:var(--text);">.xlsx files</strong> here — one per trading day. App auto-detects date and saves data permanently.</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding:10px 12px;background:rgba(26,92,255,0.06);border:1px solid rgba(26,92,255,0.15);border-radius:8px;font-size:0.72rem;color:var(--text2);">
+          💡 Files are named like <strong style="color:var(--text);">BhavCopy_NSE_CM_0_0_0_20260201_F_0000.xlsx</strong> — date auto-read from filename
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload Zone -->
+    <div class="risk-card mb-16">
+      <h3 style="margin-bottom:4px;">Upload Bhavcopy Files</h3>
+      <p style="font-size:0.72rem;color:var(--text3);margin-bottom:14px;">Tap to select files — upload multiple CSVs at once for better analysis</p>
+
+      <div class="nse-upload-zone" onclick="document.getElementById('csv-upload').click()"
+        ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+        ondragleave="this.style.borderColor='var(--border)'"
+        ondrop="handleDrop(event)">
+        <div style="font-size:2.5rem;margin-bottom:10px;">📁</div>
+        <div style="font-weight:700;color:var(--text);font-size:0.9rem;margin-bottom:4px;">Tap to browse files</div>
+        <div style="font-size:0.7rem;color:var(--text3);">Supports new <strong style="color:var(--accent);">.xlsx</strong> UDiFF format &amp; old .csv format</div>
+      </div>
+      <input type="file" id="csv-upload" accept=".csv,.xlsx" multiple style="display:none" onchange="handleFileUpload(this.files)">
+
+      <!-- Data quality bar -->
+      <div style="margin-top:14px;padding:12px;background:var(--bg3);border-radius:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-size:0.65rem;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;">Data Quality</span>
+          <span id="quality-label" style="font-size:0.72rem;font-weight:700;color:var(--danger);">No files</span>
+        </div>
+        <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+          <div id="quality-bar" style="height:100%;width:0%;background:var(--danger);border-radius:4px;transition:all 0.4s;"></div>
+        </div>
+        <div id="quality-detail" style="font-size:0.68rem;color:var(--text3);margin-top:6px;">Upload files to enable analysis</div>
+      </div>
+
+      <!-- Uploaded files list -->
+      <div id="uploaded-files-list" style="margin-top:12px;display:none;">
+        <div style="font-size:0.65rem;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;">Loaded Files</div>
+        <div id="file-tags" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      </div>
+    </div>
+
+    <!-- Data Calendar -->
+    <div class="nse-filter-panel" style="margin-bottom:16px;">
+      <button class="nse-filter-toggle" onclick="toggleFilterPanel('data-calendar','cal-toggle-btn')" id="cal-toggle-btn">
+        <span class="toggle-left">📅 Data Calendar &amp; Gap Tracker</span>
+        <span class="toggle-arrow">▼</span>
+      </button>
+      <div class="nse-filter-body" id="data-calendar" style="padding:14px;">
+        <div style="text-align:center;padding:20px;color:var(--text3);font-size:0.78rem;">Upload files to see calendar</div>
+      </div>
+    </div>
+    <div class="nse-filter-panel mb-16">
+      <button class="nse-filter-toggle" onclick="toggleFilterPanel('nse-filter-body','nse-filter-btn')" id="nse-filter-btn">
+        <span class="toggle-left">⚙️ <span>Filter Settings</span></span>
+        <span class="arrow">▾</span>
+      </button>
+      <div class="nse-filter-body open" id="nse-filter-body">
+        <div class="nse-form-grid">
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="form-label">Min Price (₹)</label>
+            <input type="number" class="form-input" id="nse-minprice" value="100">
+          </div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="form-label">Max Price (₹)</label>
+            <input type="number" class="form-input" id="nse-maxprice" value="1500">
+          </div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="form-label">Min Vol Surge (×avg)</label>
+            <input type="number" class="form-input" id="nse-vol" value="1.5" step="0.1">
+          </div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="form-label">Min Change (%)</label>
+            <input type="number" class="form-input" id="nse-chg" value="1.0" step="0.5">
+          </div>
+          <div class="form-row" style="margin-bottom:0;grid-column:1/-1;">
+            <label class="form-label">My Capital (₹)</label>
+            <input type="number" class="form-input" id="nse-capital" value="110000">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div style="display:flex;gap:10px;margin-bottom:20px;">
+      <button class="btn btn-primary flex-1" id="analyse-btn" onclick="runScan()">⚡ ANALYSE DATA</button>
+      <button class="btn btn-secondary" onclick="clearNSEData()">↺ Clear</button>
+    </div>
+
+    <!-- What gets calculated - collapsible -->
+    <div class="nse-filter-panel mb-16">
+      <button class="nse-filter-toggle" onclick="toggleFilterPanel('nse-cap-body','nse-cap-btn')" id="nse-cap-btn">
+        <span class="toggle-left">📊 <span>What Gets Calculated</span></span>
+        <span class="arrow">▾</span>
+      </button>
+      <div class="nse-filter-body" id="nse-cap-body">
+        <div class="cap-grid">
+          <div style="padding:12px;border-radius:8px;background:var(--bg3);border-left:3px solid var(--danger);">
+            <div style="font-weight:700;font-size:0.75rem;margin-bottom:6px;">1 Day</div>
+            <div style="font-size:0.68rem;color:var(--text2);line-height:1.7;">✅ Price & Change<br>✅ EQ series filter<br>❌ Volume ratio<br>❌ RSI / MA</div>
+          </div>
+          <div style="padding:12px;border-radius:8px;background:var(--bg3);border-left:3px solid var(--warn);">
+            <div style="font-weight:700;font-size:0.75rem;margin-bottom:6px;">5–9 Days</div>
+            <div style="font-size:0.68rem;color:var(--text2);line-height:1.7;">✅ Above +<br>✅ Volume ratio<br>✅ Consolidation<br>❌ RSI</div>
+          </div>
+          <div style="padding:12px;border-radius:8px;background:var(--bg3);border-left:3px solid var(--accent2);">
+            <div style="font-weight:700;font-size:0.75rem;margin-bottom:6px;">15+ Days</div>
+            <div style="font-size:0.68rem;color:var(--text2);line-height:1.7;">✅ Above +<br>✅ RSI (14-day)<br>✅ MA5 / MA20<br>✅ Full score</div>
+          </div>
+          <div style="padding:12px;border-radius:8px;background:var(--bg3);border-left:3px solid var(--accent);">
+            <div style="font-weight:700;font-size:0.75rem;margin-bottom:6px;">25+ Days</div>
+            <div style="font-size:0.68rem;color:var(--text2);line-height:1.7;">✅ All above<br>✅ Max accuracy<br>✅ 52W high flag<br>✅ Best signals</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NSE Results -->
+    <div id="nse-results-wrap" style="display:none;">
+      <div class="table-wrap">
+        <div class="table-title">
+          <h3 id="nse-results-title">📊 BREAKOUT SIGNALS</h3>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <span class="badge badge-cyan" id="nse-result-count">0 results</span>
+            <span id="nse-date-range" style="font-size:0.65rem;color:var(--text3);"></span>
+          </div>
+        </div>
+        <!-- Mobile cards -->
+        <div class="mobile-cards" id="nse-mobile-cards"></div>
+        <!-- Desktop table -->
+        <div class="desktop-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th><th>Close</th><th>Chg%</th><th>Vol Ratio</th><th>RSI</th><th>MA Cross</th><th>Consolidation</th><th>Score</th><th>Target</th><th>SL</th><th>R:R</th><th>Shares</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="nse-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div class="empty-state" id="nse-empty" style="padding:60px 20px;">
+      <div class="empty-icon">📂</div>
+      <div class="empty-title">Upload NSE Bhavcopy Files</div>
+      <div class="empty-sub">Download free daily data from nseindia.com<br>and upload above to scan real stocks</div>
+    </div>
+
+  </div>
+
+</div>
+
+<script src="BreakoutIQ.js"></script>
+
+<!-- ======= SYNC MODAL ======= -->
+<div class="sync-modal-overlay" id="syncModal" onclick="if(event.target===this)closeSyncModal()">
+  <div class="sync-modal">
+    <div class="sync-modal-header">
+      <div class="sync-drag"></div>
+      <button class="sync-close-btn" onclick="closeSyncModal()">✕</button>
+      <div class="sync-modal-title">☁️ Multi-Device Sync</div>
+      <div class="sync-modal-sub">Keep watchlist &amp; journal in sync via GitHub Gist</div>
+      <!-- Tab bar -->
+      <div class="sync-tabs">
+        <button class="sync-tab active" onclick="showSyncPanel('panel-connect',this)">🔗 Connect</button>
+        <button class="sync-tab" onclick="showSyncPanel('panel-github',this)">⚙️ GitHub Setup</button>
+        <button class="sync-tab" onclick="showSyncPanel('panel-backup',this)">💾 Backup</button>
+      </div>
+    </div>
+
+    <!-- PANEL 1: Connect / Status -->
+    <div class="sync-panel active" id="panel-connect">
+
+      <!-- Status box -->
+      <div id="sync-status-box" class="sync-status-box info">
+        <span>ℹ️</span>
+        <span id="sync-status-text">Configure GitHub Gist first to enable sync</span>
+      </div>
+
+      <!-- Gist ID display -->
+      <div class="sync-code-display">
+        <div class="sync-code-label">Your Gist ID</div>
+        <div id="gist-id-display" style="font-size:0.75rem;font-family:'JetBrains Mono',monospace;color:var(--text);word-break:break-all;text-align:center;padding:10px 0;letter-spacing:1px;">—</div>
+        <div style="font-size:0.7rem;color:var(--text3);">Share this Gist ID with your other devices (they need the same GitHub token)</div>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;">
+          <button class="btn btn-secondary" style="padding:8px 16px;font-size:0.72rem;min-height:38px;" onclick="copyGistId()">📋 Copy Gist ID</button>
+        </div>
+      </div>
+
+      <!-- Link to existing Gist on another device -->
+      <div style="margin-bottom:16px;">
+        <label class="form-label">Link to Another Device — Paste Their Gist ID</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" class="sync-input" id="join-gist-input" placeholder="Paste full Gist ID here" style="flex:1;margin-bottom:0;font-size:0.72rem;">
+          <button class="btn btn-primary" style="padding:12px 16px;min-height:46px;white-space:nowrap;" onclick="joinWithGistId()">Link →</button>
+        </div>
+        <div style="font-size:0.65rem;color:var(--text3);margin-top:6px;">Replaces your current Gist ID — your data will merge with that Gist's data</div>
+      </div>
+
+      <!-- Sync now button -->
+      <button class="btn btn-success btn-full" onclick="syncNow()" id="sync-now-btn" disabled style="margin-bottom:10px;">
+        ☁️ Sync Now
+      </button>
+      <div id="last-sync-time" style="text-align:center;font-size:0.65rem;color:var(--text3);"></div>
+    </div>
+
+    <!-- PANEL 2: GitHub Setup -->
+    <div class="sync-panel" id="panel-github">
+      <div class="sync-status-box info" style="margin-bottom:16px;">
+        <span>💡</span>
+        <span>Free forever — uses a private GitHub Gist to store your data. No Firebase account needed.</span>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <div class="step-text">Go to <strong>github.com</strong> → Sign in (or create a free account)</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <div class="step-text">Click your avatar → <strong>Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)</strong></div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <div class="step-text">Set any expiry. Under <strong>Scopes</strong>, tick only <strong>gist</strong>. Click Generate. Copy the token (starts with <code>ghp_</code>)</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num">4</div>
+        <div class="step-text">Paste it below and tap <strong>Connect</strong>. A private Gist is created automatically — or paste an existing Gist ID to reuse it.</div>
+      </div>
+
+      <label class="form-label" style="margin-top:8px;">GitHub Personal Access Token</label>
+      <input type="password" class="sync-input" id="github-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+
+      <label class="form-label" style="margin-top:8px;">Existing Gist ID <span style="font-weight:400;color:var(--text3);">(optional — leave blank to create new)</span></label>
+      <input type="text" class="sync-input" id="github-gist-input" placeholder="Paste Gist ID if you already have one">
+
+      <div id="github-test-result" style="font-size:0.72rem;margin-bottom:10px;display:none;"></div>
+
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary flex-1" onclick="saveGithubConfig()">🔗 Connect to GitHub</button>
+        <button class="btn btn-secondary" onclick="clearGithubConfig()" title="Disconnect GitHub">✕</button>
+      </div>
+
+      <div style="margin-top:14px;padding:12px;background:rgba(0,168,90,0.05);border:1px solid rgba(0,168,90,0.2);border-radius:8px;">
+        <div style="font-size:0.68rem;color:var(--accent2);line-height:1.6;">
+          ✅ Your Gist is <strong>private</strong> — only visible to you. The token is stored only on this device. Auto-syncs every 5 minutes when connected.
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL 3: Backup / Export / Import -->
+    <div class="sync-panel" id="panel-backup">
+      <div class="sync-status-box info" style="margin-bottom:16px;">
+        <span>📦</span>
+        <span>Export everything including NSE data. Import on any device to restore.</span>
+      </div>
+
+      <div class="export-grid">
+        <div class="export-card" onclick="exportAllData()">
+          <div class="ec-icon">⬇️</div>
+          <div class="ec-title">Full Export</div>
+          <div class="ec-sub">Watchlist, journal &amp; all NSE data as .json file</div>
+        </div>
+        <div class="export-card" onclick="document.getElementById('import-file-input').click()">
+          <div class="ec-icon">⬆️</div>
+          <div class="ec-title">Full Import</div>
+          <div class="ec-sub">Restore from a previously exported .json file</div>
+        </div>
+        <div class="export-card" onclick="exportWatchlistJournal()">
+          <div class="ec-icon">📋</div>
+          <div class="ec-title">Watchlist + Journal</div>
+          <div class="ec-sub">Small file — quick sync between devices</div>
+        </div>
+        <div class="export-card" onclick="exportNSEOnly()">
+          <div class="ec-icon">📊</div>
+          <div class="ec-title">NSE Data Only</div>
+          <div class="ec-sub">All uploaded Bhavcopy data (~2–5 MB)</div>
+        </div>
+      </div>
+
+      <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="importFromFile(this)">
+
+      <div id="backup-result" style="display:none;" class="sync-status-box ok">
+        <span id="backup-result-text"></span>
+      </div>
+
+      <div style="padding:12px;background:var(--bg3);border-radius:10px;font-size:0.7rem;color:var(--text2);line-height:1.7;">
+        <strong>Tip for new device setup:</strong><br>
+        1. Export Full on current device → save the .json file<br>
+        2. Transfer file to new device (WhatsApp, Google Drive, email)<br>
+        3. Open BreakoutIQ on new device → Import Full<br>
+        4. Enter same GitHub token + Gist ID → live sync activated
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
