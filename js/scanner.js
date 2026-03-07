@@ -352,6 +352,7 @@ function runScan() {
       btn.textContent = '⚡ FULL SCAN'; btn.disabled = false;
     }
   }, 50);
+}
 
 // ===================== PRE-BREAKOUT COIL SCANNER =====================
 // Looks for stocks SETTING UP for a move — NOT stocks already moving

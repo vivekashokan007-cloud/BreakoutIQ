@@ -1,0 +1,19 @@
+{
+  "name": "BreakoutIQ — Smart Stock Scanner",
+  "short_name": "BreakoutIQ",
+  "description": "Varsity-based breakout swing trading scanner for NSE stocks",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0f4ff",
+  "theme_color": "#f0f4ff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23f0f4ff'/><text x='50%' y='55%' font-size='100' text-anchor='middle' dominant-baseline='middle'>📡</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "lang": "en-IN"
+}
