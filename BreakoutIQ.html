@@ -581,14 +581,11 @@
       <div id="nse-quality-pill" class="quality-pill">No files</div>
     </div>
 
-    <!-- Scan mode toggle -->
-    <div class="scan-mode-toggle">
-      <button class="scan-mode-btn active" id="mode-breakout" onclick="setScanMode('breakout',this)">
-        ⚡ Breakout<br><span style="font-size:0.58rem;font-weight:400;opacity:0.8;">Already moving</span>
-      </button>
-      <button class="scan-mode-btn" id="mode-coil" onclick="setScanMode('coil',this)">
-        🌀 Pre-Breakout<br><span style="font-size:0.58rem;font-weight:400;opacity:0.8;">Coiling for move</span>
-      </button>
+    <!-- Scan info badge (replaces mode toggle — now one unified scan) -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+      <div style="background:rgba(0,168,90,0.07);border:1px solid rgba(0,168,90,0.2);border-radius:8px;padding:6px 12px;font-size:0.68rem;color:var(--accent2);font-weight:700;">🟢 Breakout — Already Moving</div>
+      <div style="background:rgba(201,128,0,0.07);border:1px solid rgba(201,128,0,0.2);border-radius:8px;padding:6px 12px;font-size:0.68rem;color:var(--warn);font-weight:700;">🟡 Coil — Setting Up</div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:0.68rem;color:var(--text3);">⏱ Est. days to target on each card</div>
     </div>
 
     <!-- Persistent storage status banner -->
@@ -698,7 +695,7 @@
 
     <!-- Action Buttons -->
     <div style="display:flex;gap:10px;margin-bottom:20px;">
-      <button class="btn btn-primary flex-1" id="analyse-btn" onclick="runScan()">⚡ ANALYSE DATA</button>
+      <button class="btn btn-primary flex-1" id="analyse-btn" onclick="runScan()">⚡ FULL SCAN — Breakout + Coil</button>
       <button class="btn btn-secondary" onclick="clearNSEData()">↺ Clear</button>
     </div>
 
@@ -767,7 +764,17 @@
 
 </div>
 
-<script src="BreakoutIQ.js"></script>
+<!-- ===================== JS MODULES — load order matters ===================== -->
+<script src="js/config.js"></script>    <!-- 1. State, constants, showNotif, formatDateKey -->
+<script src="js/calendar.js"></script>  <!-- 2. NSE holidays, isNSETradingDay -->
+<script src="js/storage.js"></script>   <!-- 3. IndexedDB engine, save/load NSE data -->
+<script src="js/parsers.js"></script>   <!-- 4. Bhavcopy upload, parse, renderDataCalendar -->
+<script src="js/scanner.js"></script>   <!-- 5. analyzeNSEData, analyzeCoilStocks, renderCombinedResults -->
+<script src="js/weekly.js"></script>    <!-- 6. Weekly watchlist, add/render/log candidates -->
+<script src="js/ui.js"></script>        <!-- 7. Tabs, demo scanner, watchlist, risk, journal, INIT -->
+<script src="js/sync.js"></script>      <!-- 8. GitHub Gist sync, loadLoginConfig -->
+<script src="js/export.js"></script>    <!-- 9. Export/import/backup -->
+<script src="js/init.js"></script>      <!-- 10. App startup — runs after all modules load -->
 
 <!-- ======= SYNC MODAL ======= -->
 <div class="sync-modal-overlay" id="syncModal" onclick="if(event.target===this)closeSyncModal()">
