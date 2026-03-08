@@ -78,37 +78,6 @@
   <!-- ======= SCANNER PAGE ======= -->
   <div class="page active" id="page-scanner">
 
-    <!-- Market Context -->
-    <div class="market-bar">
-      <div class="market-item">
-        <span class="market-label">NIFTY 50</span>
-        <span class="market-val" id="nifty-val">22,450</span>
-        <span class="change-pos" id="nifty-chg">▲ 0.45%</span>
-      </div>
-      <div class="mbar-divider"></div>
-      <div class="market-item">
-        <span class="market-label">BANKNIFTY</span>
-        <span class="market-val" id="bnf-val">47,120</span>
-        <span class="change-pos" id="bnf-chg">▲ 0.32%</span>
-      </div>
-      <div class="mbar-divider"></div>
-      <div class="market-item">
-        <span class="market-label">Market Trend</span>
-        <span class="badge badge-green" id="mkt-trend">BULLISH</span>
-      </div>
-      <div class="mbar-divider"></div>
-      <div class="market-item">
-        <span class="market-label">Trading Window</span>
-        <span class="market-val" id="window-status" style="color:var(--warn)">—</span>
-      </div>
-    </div>
-
-    <!-- Alerts Banner -->
-    <div class="alerts-banner" id="alerts-banner">
-      <div class="alert-dot"></div>
-      <div><strong id="alert-count">0 stocks</strong> match breakout criteria today · Scan last run: <span id="last-scan">—</span></div>
-    </div>
-
     <!-- Stat Cards -->
     <div class="scanner-header">
       <div class="stat-card">
@@ -128,85 +97,85 @@
       </div>
     </div>
 
-    <!-- Filter Bar -->
-    <div class="filter-bar">
-      <button class="filter-toggle-btn" id="scanner-filter-btn" onclick="toggleFilterPanel('scanner-filter-body','scanner-filter-btn')">
-        <span>⚙️ Filters & Settings</span>
-        <span class="arrow">▾</span>
-      </button>
-      <div class="filter-body" id="scanner-filter-body">
-        <div class="filter-grid">
-          <div class="filter-group">
-            <div class="filter-label">Min Price (₹)</div>
-            <input type="number" class="filter-input" id="f-minprice" value="100">
-          </div>
-          <div class="filter-group">
-            <div class="filter-label">Max Price (₹)</div>
-            <input type="number" class="filter-input" id="f-maxprice" value="1500">
-          </div>
-          <div class="filter-group">
-            <div class="filter-label">Min Vol Ratio</div>
-            <input type="number" class="filter-input" id="f-vol" value="1.5" step="0.1">
-          </div>
-          <div class="filter-group">
-            <div class="filter-label">Signal Strength</div>
-            <select class="filter-select" id="f-signal">
-              <option value="0">All Signals</option>
-              <option value="60">Strong 60%+</option>
-              <option value="75" selected>Very Strong 75%+</option>
-              <option value="90">Elite 90%+</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <div class="filter-label">Sector</div>
-            <select class="filter-select" id="f-sector">
-              <option value="ALL">All Sectors</option>
-              <option value="IT">IT</option>
-              <option value="PHARMA">Pharma</option>
-              <option value="CAPGOODS">Capital Goods</option>
-              <option value="DEFENCE">Defence</option>
-              <option value="INFRA">Infrastructure</option>
-              <option value="BANKING">Banking</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <div class="filter-label">My Capital (₹)</div>
-            <input type="number" class="filter-input" id="f-capital" value="110000">
-          </div>
-        </div>
-        <div class="filter-actions">
-          <button class="btn btn-secondary flex-1" onclick="resetFilters()">↺ Reset</button>
-        </div>
-      </div>
-      <button class="btn btn-primary btn-full mt-12" onclick="runScanner()">⚡ SCAN NOW</button>
+    <!-- Trading Window -->
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;">
+      <span style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px;">Trading Window</span>
+      <span id="window-status" style="font-size:0.78rem;font-weight:700;color:var(--warn);">—</span>
     </div>
 
-    <!-- Results Table -->
-    <div class="table-wrap">
-      <div class="table-title">
-        <h3>BREAKOUT CANDIDATES</h3>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <span class="badge badge-cyan" id="result-count">0 results</span>
-          <button class="btn-xs btn-xs-cyan" onclick="exportWatchlist()">↗ Export</button>
+    <!-- Scan type legend -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <div style="background:rgba(0,168,90,0.07);border:1px solid rgba(0,168,90,0.2);border-radius:8px;padding:6px 12px;font-size:0.68rem;color:var(--accent2);font-weight:700;">🟢 Breakout — Already Moving</div>
+      <div style="background:rgba(201,128,0,0.07);border:1px solid rgba(201,128,0,0.2);border-radius:8px;padding:6px 12px;font-size:0.68rem;color:var(--warn);font-weight:700;">🟡 Coil — Setting Up</div>
+    </div>
+
+    <!-- Filters -->
+    <div class="nse-filter-panel mb-16">
+      <button class="nse-filter-toggle" onclick="toggleFilterPanel('nse-filter-body','nse-filter-btn')" id="nse-filter-btn">
+        <span class="toggle-left">⚙️ <span>Filter Settings</span></span>
+        <span class="arrow">▾</span>
+      </button>
+      <div class="nse-filter-body open" id="nse-filter-body">
+        <div class="nse-form-grid">
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="form-label">Min Price (₹)</label>
+            <input type="number" class="form-input" id="nse-minprice" value="100">
+          </div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="form-label">Max Price (₹)</label>
+            <input type="number" class="form-input" id="nse-maxprice" value="1500">
+          </div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="form-label">Min Vol Surge (×avg)</label>
+            <input type="number" class="form-input" id="nse-vol" value="1.5" step="0.1">
+          </div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="form-label">Min Change (%)</label>
+            <input type="number" class="form-input" id="nse-chg" value="1.0" step="0.5">
+          </div>
+          <div class="form-row" style="margin-bottom:0;grid-column:1/-1;">
+            <label class="form-label">My Capital (₹)</label>
+            <input type="number" class="form-input" id="nse-capital" value="110000">
+          </div>
         </div>
       </div>
-      <!-- Mobile cards -->
-      <div class="mobile-cards" id="scanner-mobile-cards">
-        <div class="empty-state"><div class="empty-icon">📡</div><div class="empty-title">Scanner Ready</div><div class="empty-sub">Hit SCAN NOW to find breakout opportunities</div></div>
+    </div>
+
+    <!-- Scan Button -->
+    <div style="display:flex;gap:10px;margin-bottom:20px;">
+      <button class="btn btn-primary flex-1" id="analyse-btn" onclick="runScan()">⚡ FULL SCAN — Breakout + Coil</button>
+      <button class="btn btn-secondary" onclick="clearNSEData()">↺ Clear</button>
+    </div>
+
+    <!-- Results -->
+    <div id="nse-results-wrap" style="display:none;">
+      <div class="table-wrap">
+        <div class="table-title">
+          <h3 id="nse-results-title">📊 SCAN RESULTS</h3>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <span class="badge badge-cyan" id="nse-result-count">0 results</span>
+            <span id="nse-date-range" style="font-size:0.65rem;color:var(--text3);"></span>
+          </div>
+        </div>
+        <div class="mobile-cards" id="nse-mobile-cards"></div>
+        <div class="desktop-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th><th>Type</th><th>Close</th><th>Change/Range</th><th>Volume</th><th>RSI</th><th>MA20</th><th>Score</th><th>Target</th><th>SL</th><th>R:R</th><th>Est.Days</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="nse-tbody"></tbody>
+          </table>
+        </div>
       </div>
-      <!-- Desktop table -->
-      <div class="desktop-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Stock</th><th>Price</th><th>Chg%</th><th>Score</th><th>Volume</th><th>RSI</th><th>Pattern</th><th>Target</th><th>SL</th><th>R:R</th><th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="scanner-tbody">
-            <tr class="loading-row"><td colspan="11"><div class="empty-state"><div class="empty-icon">📡</div><div class="empty-title">Scanner Ready</div><div class="empty-sub">Hit SCAN NOW to find breakout opportunities</div></div></td></tr>
-          </tbody>
-        </table>
-      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div class="empty-state" id="nse-empty" style="padding:60px 20px;">
+      <div class="empty-icon">📡</div>
+      <div class="empty-title">No Data Loaded</div>
+      <div class="empty-sub">Go to NSE Data tab → upload Bhavcopy files → come back here to scan</div>
     </div>
 
     <!-- Watchlist -->
@@ -662,43 +631,6 @@
         <div style="text-align:center;padding:20px;color:var(--text3);font-size:0.78rem;">Upload files to see calendar</div>
       </div>
     </div>
-    <div class="nse-filter-panel mb-16">
-      <button class="nse-filter-toggle" onclick="toggleFilterPanel('nse-filter-body','nse-filter-btn')" id="nse-filter-btn">
-        <span class="toggle-left">⚙️ <span>Filter Settings</span></span>
-        <span class="arrow">▾</span>
-      </button>
-      <div class="nse-filter-body open" id="nse-filter-body">
-        <div class="nse-form-grid">
-          <div class="form-row" style="margin-bottom:0;">
-            <label class="form-label">Min Price (₹)</label>
-            <input type="number" class="form-input" id="nse-minprice" value="100">
-          </div>
-          <div class="form-row" style="margin-bottom:0;">
-            <label class="form-label">Max Price (₹)</label>
-            <input type="number" class="form-input" id="nse-maxprice" value="1500">
-          </div>
-          <div class="form-row" style="margin-bottom:0;">
-            <label class="form-label">Min Vol Surge (×avg)</label>
-            <input type="number" class="form-input" id="nse-vol" value="1.5" step="0.1">
-          </div>
-          <div class="form-row" style="margin-bottom:0;">
-            <label class="form-label">Min Change (%)</label>
-            <input type="number" class="form-input" id="nse-chg" value="1.0" step="0.5">
-          </div>
-          <div class="form-row" style="margin-bottom:0;grid-column:1/-1;">
-            <label class="form-label">My Capital (₹)</label>
-            <input type="number" class="form-input" id="nse-capital" value="110000">
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Action Buttons -->
-    <div style="display:flex;gap:10px;margin-bottom:20px;">
-      <button class="btn btn-primary flex-1" id="analyse-btn" onclick="runScan()">⚡ FULL SCAN — Breakout + Coil</button>
-      <button class="btn btn-secondary" onclick="clearNSEData()">↺ Clear</button>
-    </div>
-
     <!-- What gets calculated - collapsible -->
     <div class="nse-filter-panel mb-16">
       <button class="nse-filter-toggle" onclick="toggleFilterPanel('nse-cap-body','nse-cap-btn')" id="nse-cap-btn">
@@ -727,37 +659,10 @@
       </div>
     </div>
 
-    <!-- NSE Results -->
-    <div id="nse-results-wrap" style="display:none;">
-      <div class="table-wrap">
-        <div class="table-title">
-          <h3 id="nse-results-title">📊 BREAKOUT SIGNALS</h3>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-            <span class="badge badge-cyan" id="nse-result-count">0 results</span>
-            <span id="nse-date-range" style="font-size:0.65rem;color:var(--text3);"></span>
-          </div>
-        </div>
-        <!-- Mobile cards -->
-        <div class="mobile-cards" id="nse-mobile-cards"></div>
-        <!-- Desktop table -->
-        <div class="desktop-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Symbol</th><th>Close</th><th>Chg%</th><th>Vol Ratio</th><th>RSI</th><th>MA Cross</th><th>Consolidation</th><th>Score</th><th>Target</th><th>SL</th><th>R:R</th><th>Shares</th><th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="nse-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- Empty state -->
-    <div class="empty-state" id="nse-empty" style="padding:60px 20px;">
-      <div class="empty-icon">📂</div>
-      <div class="empty-title">Upload NSE Bhavcopy Files</div>
-      <div class="empty-sub">Download free daily data from nseindia.com<br>and upload above to scan real stocks</div>
+    <!-- Tip: go to Scanner tab to run scan after uploading -->
+    <div style="background:rgba(26,92,255,0.06);border:1px solid rgba(26,92,255,0.15);border-radius:10px;padding:12px 16px;text-align:center;">
+      <div style="font-size:0.75rem;color:var(--accent);font-weight:700;margin-bottom:4px;">✅ Files uploaded? Go to Scanner tab</div>
+      <div style="font-size:0.68rem;color:var(--text3);">Tap 📡 Scanner in the bottom nav → hit ⚡ FULL SCAN</div>
     </div>
 
   </div>

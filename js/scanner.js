@@ -765,4 +765,10 @@ function renderCombinedResults(breakouts, coils, allDates) {
     rowsHtml += coils.map((s,i) => makeRow(s, i===0)).join('');
   }
   tbody.innerHTML = rowsHtml;
+
+  // Update Scanner tab stat card
+  const sigEl = document.getElementById('stat-signals');
+  if (sigEl) sigEl.textContent = total;
+
+  showNotif('⚡ Scan Complete', `${breakouts.length} breakout · ${coils.length} coil setups found`);
 }

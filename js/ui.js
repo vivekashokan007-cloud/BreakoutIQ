@@ -1,172 +1,8 @@
 // ===================== UI — SCANNER TAB, WATCHLIST, RISK, CHECKLIST, JOURNAL, NAV =====================
 
-// ===================== SCANNER =====================
-function runScanner() {
-  const tbody = document.getElementById('scanner-tbody');
-  const mobileCards = document.getElementById('scanner-mobile-cards');
-  const loadingHtml = '<div style="text-align:center;padding:48px;color:var(--text3);"><span class="spinner"></span> Scanning NSE stocks...</div>';
-  tbody.innerHTML = `<tr><td colspan="11">${loadingHtml}</td></tr>`;
-  mobileCards.innerHTML = loadingHtml;
-
-  setTimeout(() => {
-    const minP = +document.getElementById('f-minprice').value || 0;
-    const maxP = +document.getElementById('f-maxprice').value || 99999;
-    const minVol = +document.getElementById('f-vol').value || 0;
-    const minSignal = +document.getElementById('f-signal').value || 0;
-    const sector = document.getElementById('f-sector').value;
-
-    let results = STOCKS.map(generateStockData).filter(s => {
-      if (s.price < minP || s.price > maxP) return false;
-      if (s.volRatio < minVol) return false;
-      if (s.score < minSignal) return false;
-      if (sector !== 'ALL' && s.sector.toUpperCase() !== sector) return false;
-      return true;
-    }).sort((a,b) => b.score - a.score);
-
-    scanResults = results;
-    renderTable(results);
-
-    const now = new Date();
-    document.getElementById('last-scan').textContent = now.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
-    const strong = results.filter(r => r.score >= 75).length;
-    document.getElementById('alert-count').textContent = `${strong} stocks`;
-    document.getElementById('stat-signals').textContent = strong;
-    document.getElementById('result-count').textContent = `${results.length} results`;
-
-    if (strong > 0) showNotif('Scan Complete', `${strong} breakout signals found!`);
-    updateWindowStatus();
-  }, 1200);
-}
-
-function renderTable(results) {
-  const tbody = document.getElementById('scanner-tbody');
-  const mobileCards = document.getElementById('scanner-mobile-cards');
-  const cap = +document.getElementById('f-capital').value || 110000;
-  document.getElementById('capital-display').textContent = '₹' + cap.toLocaleString('en-IN');
-
-  if (results.length === 0) {
-    const empty = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No stocks found</div><div class="empty-sub">Relax filters or scan again</div></div>';
-    tbody.innerHTML = `<tr><td colspan="11">${empty}</td></tr>`;
-    mobileCards.innerHTML = empty;
-    return;
-  }
-
-  // Desktop table rows
-  tbody.innerHTML = results.map(s => {
-    const chgClass = s.change >= 0 ? 'change-pos' : 'change-neg';
-    const chgSign = s.change >= 0 ? '▲' : '▼';
-    const volClass = s.volRatio >= 1.5 ? 'vol-high' : 'vol-normal';
-    const scoreColor = s.score >= 80 ? 'var(--accent2)' : s.score >= 60 ? 'var(--warn)' : 'var(--text2)';
-    const rrColor = +s.rr >= 2 ? 'var(--accent2)' : +s.rr >= 1.5 ? 'var(--warn)' : 'var(--danger)';
-    const rsiColor = s.rsi >= 50 && s.rsi <= 75 ? 'var(--accent2)' : s.rsi > 75 ? 'var(--warn)' : 'var(--danger)';
-    return `<tr>
-      <td><div class="stock-name">${s.sym}</div><div class="stock-sector">${s.sector} · ${s.cap}</div></td>
-      <td style="font-weight:700;">₹${s.price.toLocaleString('en-IN')}</td>
-      <td class="${chgClass}">${chgSign}${Math.abs(s.change)}%</td>
-      <td><div style="display:flex;align-items:center;gap:6px;"><div class="signal-fill" style="width:60px;"><div class="signal-fill-inner" style="width:${s.score}%;background:${scoreColor};"></div></div><span style="font-size:0.72rem;font-weight:700;color:${scoreColor};">${s.score}%</span></div></td>
-      <td class="${volClass}">${s.volRatio}x</td>
-      <td style="color:${rsiColor};">${s.rsi}</td>
-      <td><span class="badge ${s.score>=75?'badge-green':s.score>=60?'badge-warn':'badge-cyan'}">${s.pattern}</span></td>
-      <td class="change-pos">₹${s.target1.toLocaleString('en-IN')}</td>
-      <td class="change-neg">₹${s.sl.toLocaleString('en-IN')}</td>
-      <td style="color:${rrColor};font-weight:700;">1:${s.rr}</td>
-      <td><div class="action-btns"><button class="btn-xs btn-xs-cyan" onclick='openDetail(${JSON.stringify(s).replace(/'/g,"&#39;")})'>Detail</button><button class="btn-xs btn-xs-green" onclick='addToWatchlist("${s.sym}")'>+Watch</button></div></td>
-    </tr>`;
-  }).join('');
-
-  // Mobile cards
-  mobileCards.innerHTML = results.map(s => {
-    const chgSign = s.change >= 0 ? '▲' : '▼';
-    const chgColor = s.change >= 0 ? 'var(--accent2)' : 'var(--danger)';
-    const scoreColor = s.score >= 80 ? 'var(--accent2)' : s.score >= 60 ? 'var(--warn)' : 'var(--text3)';
-    const rrColor = +s.rr >= 2 ? 'var(--accent2)' : +s.rr >= 1.5 ? 'var(--warn)' : 'var(--danger)';
-    const rsiColor = s.rsi >= 50 && s.rsi <= 75 ? 'var(--accent2)' : s.rsi > 75 ? 'var(--warn)' : 'var(--danger)';
-    return `<div class="stock-card">
-      <div class="stock-card-header">
-        <div>
-          <div class="stock-card-name">${s.sym}</div>
-          <div class="stock-card-sector">${s.sector} · ${s.cap} Cap</div>
-        </div>
-        <div class="stock-card-price">
-          <div class="price-val">₹${s.price.toLocaleString('en-IN')}</div>
-          <div style="font-size:0.75rem;font-weight:700;color:${chgColor};">${chgSign} ${Math.abs(s.change)}%</div>
-        </div>
-      </div>
-      <div class="stock-card-grid">
-        <div class="stock-card-metric">
-          <div class="scm-label">Volume</div>
-          <div class="scm-value ${s.volRatio>=1.5?'text-green':'text-muted'}">${s.volRatio}x</div>
-        </div>
-        <div class="stock-card-metric">
-          <div class="scm-label">RSI (14)</div>
-          <div class="scm-value" style="color:${rsiColor};">${s.rsi}</div>
-        </div>
-        <div class="stock-card-metric">
-          <div class="scm-label">R:R</div>
-          <div class="scm-value" style="color:${rrColor};">1:${s.rr}</div>
-        </div>
-        <div class="stock-card-metric">
-          <div class="scm-label">Target</div>
-          <div class="scm-value text-green">₹${s.target1.toLocaleString('en-IN')}</div>
-        </div>
-        <div class="stock-card-metric">
-          <div class="scm-label">Stop Loss</div>
-          <div class="scm-value text-danger">₹${s.sl.toLocaleString('en-IN')}</div>
-        </div>
-        <div class="stock-card-metric">
-          <div class="scm-label">Pattern</div>
-          <div class="scm-value" style="font-size:0.65rem;color:var(--accent);">${s.pattern}</div>
-        </div>
-      </div>
-      <div class="stock-card-score">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-          <span style="font-size:0.6rem;color:var(--text3);letter-spacing:1px;text-transform:uppercase;">Breakout Score</span>
-          <span style="font-size:0.72rem;font-weight:700;color:${scoreColor};">${s.score}%</span>
-        </div>
-        <div class="score-bar-track"><div class="score-bar-fill" style="width:${s.score}%;background:${scoreColor};"></div></div>
-      </div>
-      <div class="stock-card-footer">
-        <button class="btn-xs btn-xs-cyan" onclick='openDetail(${JSON.stringify(s).replace(/'/g,"&#39;")})'>📋 Detail</button>
-        <button class="btn-xs btn-xs-green" onclick='addToWatchlist("${s.sym}")'>+ Watchlist</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function openDetail(s) {
-  document.getElementById('modal-stock').textContent = s.sym;
-  document.getElementById('modal-sector').textContent = `NSE · ${s.cap} Cap · ${s.sector}`;
-  const cap = +document.getElementById('f-capital').value || 110000;
-  const riskAmt = cap * 0.02;
-  const riskPerShare = s.price - s.sl;
-  const shares = riskPerShare > 0 ? Math.floor(riskAmt / riskPerShare) : 0;
-  const capNeeded = shares * s.price;
-
-  document.getElementById('modal-content').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-      <div class="result-box"><div class="result-row"><span class="result-key">Price</span><span class="result-val cyan">₹${s.price.toLocaleString('en-IN')}</span></div><div class="result-row"><span class="result-key">Change</span><span class="result-val ${s.change>=0?'green':'danger'}">${s.change>=0?'▲':'▼'} ${Math.abs(s.change)}%</span></div></div>
-      <div class="result-box"><div class="result-row"><span class="result-key">Volume Ratio</span><span class="result-val ${s.volRatio>=1.5?'green':'orange'}">${s.volRatio}x</span></div><div class="result-row"><span class="result-key">RSI (14)</span><span class="result-val cyan">${s.rsi}</span></div></div>
-    </div>
-    <div class="result-box" style="margin-bottom:12px;">
-      <div style="font-size:0.65rem;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">VARSITY TRADE PLAN</div>
-      <div class="result-row"><span class="result-key">Entry Zone</span><span class="result-val cyan">₹${s.price} – ₹${(s.price*1.01).toFixed(0)}</span></div>
-      <div class="result-row"><span class="result-key">Stop Loss</span><span class="result-val danger">₹${s.sl} (${((s.price-s.sl)/s.price*100).toFixed(1)}% below)</span></div>
-      <div class="result-row"><span class="result-key">Target 1 (50% exit)</span><span class="result-val green">₹${s.target1} (+6%)</span></div>
-      <div class="result-row"><span class="result-key">Target 2 (trail stop)</span><span class="result-val green">₹${s.target2} (+12%)</span></div>
-      <div class="result-row"><span class="result-key">Risk:Reward</span><span class="result-val orange">1:${s.rr}</span></div>
-    </div>
-    <div class="result-box">
-      <div style="font-size:0.65rem;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">POSITION SIZE (2% RULE)</div>
-      <div class="result-row"><span class="result-key">Max Risk (2%)</span><span class="result-val cyan">₹${riskAmt.toLocaleString('en-IN')}</span></div>
-      <div class="result-row"><span class="result-key">Shares to Buy</span><span class="result-val green">${shares} shares</span></div>
-      <div class="result-row"><span class="result-key">Capital Required</span><span class="result-val orange">₹${capNeeded.toLocaleString('en-IN')}</span></div>
-    </div>
-    <button class="btn btn-success" style="width:100%;margin-top:12px;" onclick='addToWatchlist("${s.sym}");closeModal();'>+ Add to Watchlist</button>
-  `;
-  document.getElementById('detailModal').classList.add('open');
-}
-
-function closeModal() { document.getElementById('detailModal').classList.remove('open'); }
+// ===================== SCANNER TAB =====================
+// Real scan is handled by runScan() in scanner.js
+// This tab now shows results from analyzeNSEData() + analyzeCoilStocks()
 
 // ===================== WATCHLIST =====================
 function addToWatchlist(sym) {
@@ -350,8 +186,13 @@ function updateJournalStats() {
 }
 
 function clearJournal() { if(confirm('Clear all journal entries?')) { trades = []; localStorage.setItem('trades', JSON.stringify(trades)); renderTrades(); updateJournalStats(); } }
-function exportWatchlist() { alert('Watchlist: ' + watchlist.join(', ') || 'Empty'); }
-function resetFilters() { document.getElementById('f-minprice').value=100; document.getElementById('f-maxprice').value=1500; document.getElementById('f-vol').value=1.5; document.getElementById('f-signal').value=75; document.getElementById('f-sector').value='ALL'; }
+function resetFilters() {
+  document.getElementById('nse-minprice').value = 100;
+  document.getElementById('nse-maxprice').value = 1500;
+  document.getElementById('nse-vol').value      = 1.5;
+  document.getElementById('nse-chg').value      = 1.0;
+  document.getElementById('nse-capital').value  = 110000;
+}
 
 // ===================== NAV =====================
 function showPage(page, btn) {
