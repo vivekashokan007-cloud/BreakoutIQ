@@ -97,6 +97,20 @@
       </div>
     </div>
 
+    <!-- Market Health Dashboard (Phase 3) -->
+    <div class="nse-filter-panel mb-16" style="border-color:var(--border);">
+      <button class="nse-filter-toggle" onclick="toggleFilterPanel('market-health-body','market-health-btn')" id="market-health-btn">
+        <span class="toggle-left">🌡️ <span>Market Health</span> &nbsp;<span id="mh-badge" style="font-size:0.7rem;font-weight:800;">—</span></span>
+        <span class="arrow">▾</span>
+      </button>
+      <div class="nse-filter-body" id="market-health-body" style="padding:14px;">
+        <div style="text-align:center;padding:16px;color:var(--text3);font-size:0.75rem;">
+          Run ⚡ FULL SCAN first to compute A/D ratio and breadth metrics.
+          <br>Then enter VIX + FII manually below.
+        </div>
+      </div>
+    </div>
+
     <!-- Trading Window -->
     <div style="display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;">
       <span style="font-size:0.7rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px;">Trading Window</span>
@@ -618,6 +632,89 @@
       <div id="uploaded-files-list" style="margin-top:12px;display:none;">
         <div style="font-size:0.65rem;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;">Loaded Files</div>
         <div id="file-tags" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      </div>
+    </div>
+
+    <!-- Auxiliary Data Upload — Delivery + Surveillance (Phase 2) -->
+    <div class="nse-filter-panel mb-16">
+      <button class="nse-filter-toggle" onclick="toggleFilterPanel('aux-upload-body','aux-upload-btn')" id="aux-upload-btn">
+        <span class="toggle-left">📊 <span>Optional: Delivery % &amp; Surveillance Data</span></span>
+        <span class="arrow">▾</span>
+      </button>
+      <div class="nse-filter-body" id="aux-upload-body" style="display:none;">
+
+        <!-- Live status row -->
+        <div id="aux-data-status" style="padding:10px 12px;background:var(--bg3);border-radius:8px;margin-bottom:14px;">
+          <div style="font-size:0.65rem;color:var(--text3);">No auxiliary data loaded yet</div>
+        </div>
+
+        <!-- Two upload zones side by side -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+
+          <!-- Delivery % upload -->
+          <div style="background:var(--bg3);border-radius:10px;padding:12px;border:1px solid var(--border);">
+            <div style="font-size:0.65rem;font-weight:700;color:var(--accent2);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">📦 Delivery Data</div>
+            <div style="font-size:0.68rem;color:var(--text2);line-height:1.6;margin-bottom:10px;">
+              From NSE → Market Data → Historical Data → Daily Reports →<br>
+              <strong style="color:var(--text);">CM - Security Wise Delivery Data (CSV)</strong><br>
+              Upload same day as Bhavcopy.
+            </div>
+            <div style="background:var(--card);border:1px dashed var(--border);border-radius:8px;padding:10px;text-align:center;cursor:pointer;margin-bottom:8px;"
+              onclick="document.getElementById('delivery-upload').click()">
+              <div style="font-size:1.2rem;margin-bottom:4px;">📥</div>
+              <div style="font-size:0.7rem;color:var(--accent);font-weight:700;">Tap to upload delivery file</div>
+              <div style="font-size:0.62rem;color:var(--text3);">MW-DELIVERY-*.csv</div>
+            </div>
+            <input type="file" id="delivery-upload" accept=".csv" style="display:none" onchange="handleDeliveryUpload(this.files)">
+            <button onclick="clearDeliveryData()" style="width:100%;background:rgba(212,42,69,0.06);border:1px solid rgba(212,42,69,0.15);color:var(--danger);padding:5px;border-radius:6px;font-size:0.62rem;cursor:pointer;">🗑 Clear</button>
+          </div>
+
+          <!-- ASM/GSM surveillance upload -->
+          <div style="background:var(--bg3);border-radius:10px;padding:12px;border:1px solid var(--border);">
+            <div style="font-size:0.65rem;font-weight:700;color:var(--warn);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">🚫 ASM/GSM List</div>
+            <div style="font-size:0.68rem;color:var(--text2);line-height:1.6;margin-bottom:10px;">
+              From NSE → Market Data → Securities under Surveillance →<br>
+              <strong style="color:var(--text);">ASM or GSM list (CSV)</strong><br>
+              Upload once per week. These stocks auto-excluded from scans.
+            </div>
+            <div style="background:var(--card);border:1px dashed var(--border);border-radius:8px;padding:10px;text-align:center;cursor:pointer;margin-bottom:8px;"
+              onclick="document.getElementById('asm-upload').click()">
+              <div style="font-size:1.2rem;margin-bottom:4px;">🚫</div>
+              <div style="font-size:0.7rem;color:var(--warn);font-weight:700;">Tap to upload ASM/GSM file</div>
+              <div style="font-size:0.62rem;color:var(--text3);">ASM*.csv or GSM*.csv</div>
+            </div>
+            <input type="file" id="asm-upload" accept=".csv" style="display:none" onchange="handleSurveillanceUpload(this.files)">
+            <button onclick="clearASMData()" style="width:100%;background:rgba(212,42,69,0.06);border:1px solid rgba(212,42,69,0.15);color:var(--danger);padding:5px;border-radius:6px;font-size:0.62rem;cursor:pointer;">🗑 Clear</button>
+          </div>
+        </div>
+
+        <!-- 52W High/Low upload — full width row below -->
+        <div style="margin-top:10px;background:var(--bg3);border-radius:10px;padding:12px;border:1px solid var(--border);">
+          <div style="font-size:0.65rem;font-weight:700;color:#a78bfa;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">📈 52-Week High/Low</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start;">
+            <div style="font-size:0.68rem;color:var(--text2);line-height:1.6;">
+              From NSE → Market Data → Historical Data → Daily Reports →<br>
+              <strong style="color:var(--text);">52 Week High Low Report (CSV)</strong><br>
+              NSE-adjusted for splits &amp; bonuses. Upload weekly.<br>
+              Used to score stocks attempting a 52W breakout (+10/+15 pts).
+            </div>
+            <div>
+              <div style="background:var(--card);border:1px dashed var(--border);border-radius:8px;padding:10px;text-align:center;cursor:pointer;margin-bottom:8px;"
+                onclick="document.getElementById('w52-upload').click()">
+                <div style="font-size:1.2rem;margin-bottom:4px;">📈</div>
+                <div style="font-size:0.7rem;color:#a78bfa;font-weight:700;">Tap to upload 52W file</div>
+                <div style="font-size:0.62rem;color:var(--text3);">52wk_H_L_Report-*.csv</div>
+              </div>
+              <input type="file" id="w52-upload" accept=".csv" style="display:none" onchange="handleW52Upload(this.files)">
+              <button onclick="clearW52Data()" style="width:100%;background:rgba(212,42,69,0.06);border:1px solid rgba(212,42,69,0.15);color:var(--danger);padding:5px;border-radius:6px;font-size:0.62rem;cursor:pointer;">🗑 Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:10px;padding:8px 12px;background:rgba(26,92,255,0.05);border:1px solid rgba(26,92,255,0.12);border-radius:8px;font-size:0.65rem;color:var(--text3);line-height:1.6;">
+          💡 Both files are optional — app works without them. Delivery % adds conviction context on scan cards.
+          ASM/GSM list silently removes regulated stocks so you never see them in results.
+        </div>
       </div>
     </div>
 

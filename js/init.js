@@ -12,6 +12,12 @@
 // Load saved NSE data on startup
 loadNSEFromStorage();
 
+// Load auxiliary data (delivery %, ASM list) from localStorage
+loadAuxData();
+
+// Load market health manual inputs from localStorage
+loadMarketInputs();
+
 // Init weekly watchlist
 renderWeeklyCandidates();
 

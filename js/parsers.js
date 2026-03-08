@@ -482,3 +482,314 @@ function clearNSEData() {
   if (csvUpload) csvUpload.value = '';
   updateDataQuality();
 }
+
+// =====================================================================
+//  AUX DATA — Load delivery + ASM from localStorage on startup
+// =====================================================================
+function loadAuxData() {
+  try {
+    const d = localStorage.getItem(DELIVERY_KEY);
+    if (d) deliveryData = JSON.parse(d);
+  } catch(e) { deliveryData = {}; }
+  try {
+    const a = localStorage.getItem(ASM_KEY);
+    if (a) asmSymbols = new Set(JSON.parse(a));
+  } catch(e) { asmSymbols = new Set(); }
+  try {
+    const w = localStorage.getItem(W52_KEY);
+    if (w) w52Data = JSON.parse(w);
+  } catch(e) { w52Data = {}; }
+  renderAuxDataStatus();
+}
+
+// =====================================================================
+//  PARSER C — CM Security-wise Delivery Positions (.csv)
+//  Source: NSE → Market Data → Historical Data → Daily Reports →
+//          CM - Security Wise Delivery Data
+//  Filename: MW-DELIVERY-DD-MM-YYYY.csv  OR  MW-{DATE}.csv
+//  Columns (flexible detection):
+//    SYMBOL / NAME_OF_SECURITY,  TRADED_QTY / QUANTITY_TRADED,
+//    DELIVERABLE_QTY,  % OF DELIVERABLE QTY TO TRADED QTY
+// =====================================================================
+function parseDeliveryFile(csvText, fileName) {
+  const lines = csvText.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) { showNotif('Empty file', fileName + ' has no data', true); return 0; }
+
+  // Find header row — skip any metadata rows at the top
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    const upper = lines[i].toUpperCase();
+    if (upper.includes('SYMBOL') || upper.includes('SECURITY') || upper.includes('DELIVERABLE')) {
+      headerIdx = i; break;
+    }
+  }
+
+  const header = lines[headerIdx].split(',').map(h => h.trim().replace(/"/g, '').toUpperCase());
+  const col = (...names) => { for (const n of names) { const i = header.findIndex(h => h.includes(n)); if (i >= 0) return i; } return -1; };
+
+  const iSym   = col('SYMBOL', 'NAME_OF_SECURITY', 'SECURITY_NAME', 'SECURITY NAME', 'SCRIP');
+  const iSer   = col('SERIES');
+  const iDelPct = col('% OF DELIVERABLE', '% DELIV', 'DLYQT', 'DELIVERY %', '% DLY');
+
+  if (iSym < 0 || iDelPct < 0) {
+    showNotif('Format Error', 'Cannot find Symbol or Delivery% column in ' + fileName, true);
+    return 0;
+  }
+
+  let count = 0;
+  const newData = { ...deliveryData }; // merge — don't wipe old data
+
+  lines.slice(headerIdx + 1).forEach(line => {
+    if (!line.trim()) return;
+    const parts = line.split(',').map(p => p.trim().replace(/"/g, ''));
+    if (parts.length <= Math.max(iSym, iDelPct)) return;
+
+    const sym    = parts[iSym].trim().toUpperCase();
+    const series = iSer >= 0 ? parts[iSer].trim() : 'EQ';
+    const pct    = parseFloat(parts[iDelPct]);
+
+    if (!sym || sym.length > 20) return;
+    if (iSer >= 0 && series !== 'EQ') return; // EQ only
+    if (isNaN(pct) || pct < 0 || pct > 100) return;
+
+    newData[sym] = +pct.toFixed(1);
+    count++;
+  });
+
+  deliveryData = newData;
+  localStorage.setItem(DELIVERY_KEY, JSON.stringify(deliveryData));
+  renderAuxDataStatus();
+  showNotif('✅ Delivery Data', count + ' stocks loaded — delivery % now shown on scan cards');
+  return count;
+}
+
+// =====================================================================
+//  PARSER D — ASM / GSM Surveillance List (.csv)
+//  Source: NSE → Market Data → Securities under Surveillance → ASM/GSM
+//  Columns (flexible): SR_NO, SYMBOL, SECURITY_NAME, ISIN, ...
+//  We only need the SYMBOL column. Any row with a valid NSE symbol gets added.
+// =====================================================================
+function parseSurveillanceFile(csvText, fileName) {
+  const lines = csvText.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) { showNotif('Empty file', fileName + ' has no data', true); return 0; }
+
+  // Find header
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    const upper = lines[i].toUpperCase();
+    if (upper.includes('SYMBOL') || upper.includes('SCRIP') || upper.includes('ISIN')) {
+      headerIdx = i; break;
+    }
+  }
+
+  const header = lines[headerIdx].split(',').map(h => h.trim().replace(/"/g, '').toUpperCase());
+  const iSym = header.findIndex(h => h.includes('SYMBOL') || h.includes('SCRIP'));
+
+  if (iSym < 0) {
+    // Last resort — if no header found, treat every non-numeric first column as a symbol
+    showNotif('Format Warn', 'No SYMBOL column found — trying first column', false);
+  }
+
+  const symIdx = iSym >= 0 ? iSym : 0;
+  const newSet = new Set(); // fresh set each upload — list is weekly snapshot
+
+  lines.slice(headerIdx + 1).forEach(line => {
+    if (!line.trim()) return;
+    const parts = line.split(',').map(p => p.trim().replace(/"/g, ''));
+    const sym = (parts[symIdx] || '').toUpperCase().trim();
+    // NSE symbols: 1-10 uppercase letters/digits, no spaces
+    if (sym && /^[A-Z0-9&-]{1,15}$/.test(sym) && !/^\d+$/.test(sym)) newSet.add(sym);
+  });
+
+  asmSymbols = newSet;
+  localStorage.setItem(ASM_KEY, JSON.stringify([...asmSymbols]));
+  renderAuxDataStatus();
+  const count = asmSymbols.size;
+  showNotif('🚫 Surveillance List', count + ' ASM/GSM stocks will be excluded from all scans');
+  return count;
+}
+
+// =====================================================================
+//  STATUS RENDER — Shows delivery + ASM status in NSE Data tab
+// =====================================================================
+function renderAuxDataStatus() {
+  const el = document.getElementById('aux-data-status');
+  if (!el) return;
+
+  const delCount = Object.keys(deliveryData).length;
+  const asmCount = asmSymbols.size;
+  const w52Count = Object.keys(w52Data).length;
+
+  const delStatus = delCount > 0
+    ? `<span style="color:var(--accent2);font-weight:700;">✅ ${delCount.toLocaleString()} stocks</span>`
+    : `<span style="color:var(--text3);">Not loaded</span>`;
+  const asmStatus = asmCount > 0
+    ? `<span style="color:var(--warn);font-weight:700;">🚫 ${asmCount} excluded</span>`
+    : `<span style="color:var(--text3);">Not loaded</span>`;
+  const w52Status = w52Count > 0
+    ? `<span style="color:var(--accent2);font-weight:700;">✅ ${w52Count.toLocaleString()} stocks</span>`
+    : `<span style="color:var(--text3);">Not loaded</span>`;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:0.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Delivery Data</div>
+        <div style="font-size:0.75rem;">${delStatus}</div>
+        ${delCount > 0 ? `<div style="font-size:0.6rem;color:var(--text3);margin-top:2px;">Shown on cards</div>` : ''}
+      </div>
+      <div>
+        <div style="font-size:0.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Surveillance (ASM/GSM)</div>
+        <div style="font-size:0.75rem;">${asmStatus}</div>
+        ${asmCount > 0 ? `<div style="font-size:0.6rem;color:var(--text3);margin-top:2px;">Auto-excluded</div>` : ''}
+      </div>
+      <div>
+        <div style="font-size:0.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">52W High/Low</div>
+        <div style="font-size:0.75rem;">${w52Status}</div>
+        ${w52Count > 0 ? `<div style="font-size:0.6rem;color:var(--text3);margin-top:2px;">Used in score</div>` : ''}
+      </div>
+    </div>`;
+}
+
+// =====================================================================
+//  UPLOAD HANDLERS for auxiliary files
+// =====================================================================
+function handleDeliveryUpload(files) {
+  if (!files || files.length === 0) return;
+  const file = files[0]; // single file expected
+  const reader = new FileReader();
+  reader.onload = e => {
+    const count = parseDeliveryFile(e.target.result, file.name);
+    const inp = document.getElementById('delivery-upload');
+    if (inp) inp.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function handleSurveillanceUpload(files) {
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  const reader = new FileReader();
+  reader.onload = e => {
+    const count = parseSurveillanceFile(e.target.result, file.name);
+    const inp = document.getElementById('asm-upload');
+    if (inp) inp.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function clearDeliveryData() {
+  deliveryData = {};
+  localStorage.removeItem(DELIVERY_KEY);
+  renderAuxDataStatus();
+  showNotif('Cleared', 'Delivery data removed');
+}
+
+function clearASMData() {
+  asmSymbols = new Set();
+  localStorage.removeItem(ASM_KEY);
+  renderAuxDataStatus();
+  showNotif('Cleared', 'Surveillance list removed');
+}
+// =====================================================================
+//  PARSER E — 52 Week High Low Report (.csv)
+//  Source: NSE → Market Data → Historical Data → Daily Reports →
+//          52 Week High Low Report
+//  Filename: 52wk_H_L_Report-DD-Mon-YYYY.csv  (various)
+//  Columns (flexible detection):
+//    SYMBOL / SCRIP_CODE,  SERIES,
+//    HIGH (52WK HIGH),  LOW (52WK LOW)
+//  NSE adjusts these for splits/bonuses — more accurate than DIY 52W calc
+// =====================================================================
+function parse52WHighFile(csvText, fileName) {
+  const lines = csvText.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) { showNotif('Empty file', fileName + ' has no data', true); return 0; }
+
+  // Find header row (skip metadata rows)
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(6, lines.length); i++) {
+    const upper = lines[i].toUpperCase();
+    if (upper.includes('SYMBOL') || upper.includes('SCRIP') || upper.includes('52') || upper.includes('HIGH')) {
+      headerIdx = i; break;
+    }
+  }
+
+  const header = lines[headerIdx].split(',').map(h => h.trim().replace(/"/g, '').toUpperCase());
+  const col = (...names) => {
+    for (const n of names) {
+      const i = header.findIndex(h => h.includes(n));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
+
+  const iSym  = col('SYMBOL', 'SCRIP', 'SECURITY', 'NAME');
+  const iSer  = col('SERIES');
+  // 52W high: look for column containing both "HIGH" and not "LOW"
+  let iHigh = -1, iLow = -1;
+  header.forEach((h, i) => {
+    if ((h.includes('HIGH') || h.includes('52H') || h.includes('WK_H') || h.includes('52WH')) && !h.includes('LOW')) {
+      if (iHigh < 0) iHigh = i;
+    }
+    if ((h.includes('LOW') || h.includes('52L') || h.includes('WK_L') || h.includes('52WL')) && !h.includes('HIGH')) {
+      if (iLow < 0) iLow = i;
+    }
+  });
+  // Fallback: if only two numeric-looking columns after symbol, they're high/low
+  if (iHigh < 0 || iLow < 0) {
+    const numericCols = header.map((h, i) => i).filter(i => i > iSym && header[i].length > 0);
+    if (numericCols.length >= 2 && iHigh < 0) iHigh = numericCols[0];
+    if (numericCols.length >= 2 && iLow  < 0) iLow  = numericCols[1];
+  }
+
+  if (iSym < 0 || iHigh < 0 || iLow < 0) {
+    showNotif('Format Error', 'Cannot find Symbol/High/Low columns in ' + fileName, true);
+    return 0;
+  }
+
+  let count = 0;
+  const newData = {};
+
+  lines.slice(headerIdx + 1).forEach(line => {
+    if (!line.trim()) return;
+    const parts = line.split(',').map(p => p.trim().replace(/"/g, ''));
+    if (parts.length <= Math.max(iSym, iHigh, iLow)) return;
+
+    const sym    = parts[iSym].trim().toUpperCase();
+    const series = iSer >= 0 ? parts[iSer].trim() : 'EQ';
+    const high52 = parseFloat(parts[iHigh]);
+    const low52  = parseFloat(parts[iLow]);
+
+    if (!sym || sym.length > 20) return;
+    if (iSer >= 0 && series !== 'EQ') return;
+    if (isNaN(high52) || isNaN(low52) || high52 <= 0 || low52 <= 0) return;
+    if (high52 < low52) return; // sanity check
+
+    newData[sym] = { high52: +high52.toFixed(2), low52: +low52.toFixed(2) };
+    count++;
+  });
+
+  w52Data = newData;
+  localStorage.setItem(W52_KEY, JSON.stringify(w52Data));
+  renderAuxDataStatus();
+  showNotif('✅ 52W Data', count + ' stocks loaded — near-52W-high bonus now active');
+  return count;
+}
+
+function handleW52Upload(files) {
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  const reader = new FileReader();
+  reader.onload = e => {
+    parse52WHighFile(e.target.result, file.name);
+    const inp = document.getElementById('w52-upload');
+    if (inp) inp.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function clearW52Data() {
+  w52Data = {};
+  localStorage.removeItem(W52_KEY);
+  renderAuxDataStatus();
+  showNotif('Cleared', '52W data removed');
+}

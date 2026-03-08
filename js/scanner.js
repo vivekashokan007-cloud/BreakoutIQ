@@ -42,6 +42,9 @@ function analyzeNSEData() {
   const results = [];
 
   Object.entries(latestData).forEach(([sym, today]) => {
+    // ---- ASM/GSM filter — skip SEBI-regulated stocks entirely ----
+    if (asmSymbols.has(sym)) return;
+
     // ---- Price range filter ----
     if (today.close < minP || today.close > maxP) return;
 
@@ -60,8 +63,8 @@ function analyzeNSEData() {
     // ---- Volume ratio (required if we have enough data) ----
     let volRatio = null;
     if (n >= 5) {
-      // Average volume of all days EXCEPT today
-      const pastVols = hist.slice(0, -1).map(d => d.vol).filter(v => v > 0);
+      // 20-day rolling avg volume (industry standard — more stable than all-days avg)
+      const pastVols = hist.slice(0, -1).slice(-20).map(d => d.vol).filter(v => v > 0);
       const avgVol = pastVols.length > 0 ? pastVols.reduce((s,v)=>s+v,0) / pastVols.length : 0;
       volRatio = avgVol > 0 ? today.vol / avgVol : null;
     }
@@ -74,20 +77,30 @@ function analyzeNSEData() {
     let rsi = null;
     if (n >= 15) {
       rsi = calcRSI14(hist.map(d => d.close));
-      // RSI filter: skip overbought (>80) — avoid chasing extended moves
-      if (rsi !== null && rsi > 80) return;
-      // RSI filter: skip weak momentum (<50) — need confirmed uptrend
-      if (rsi !== null && rsi < 50) return;
+      // RSI 75-80 is the highest win-rate zone per backtest — don't block it
+      if (rsi !== null && rsi > 85) return;
+      // RSI < 45 = weak momentum — skip
+      if (rsi !== null && rsi < 45) return;
     }
 
     // ---- Moving averages ----
-    let ma5 = null, ma20 = null, maCross = '—';
+    let ma5 = null, ma20 = null, ma50 = null, ema200 = null, maCross = '—';
     if (n >= 5)  ma5  = hist.slice(-5).reduce((s,d)=>s+d.close,0)  / 5;
     if (n >= 20) {
-      ma20     = hist.slice(-20).reduce((s,d)=>s+d.close,0) / 20;
-      maCross  = (today.close > ma20) ? 'Above MA20 ✓' : 'Below MA20';
-      // If below MA20 and we have enough data, it's a weak setup — penalise later
+      ma20    = hist.slice(-20).reduce((s,d)=>s+d.close,0) / 20;
+      maCross = (today.close > ma20) ? 'Above MA20 ✓' : 'Below MA20';
     }
+    if (n >= 50) {
+      ma50 = hist.slice(-50).reduce((s,d)=>s+d.close,0) / 50;
+    }
+    // EMA200 — needs 200+ days of data; calculated via Wilder's exponential smoothing
+    if (n >= 200) {
+      const k = 2 / 201;
+      let ema = hist.slice(0, 200).reduce((s,d)=>s+d.close,0) / 200;
+      for (let i = 200; i < n; i++) ema = hist[i].close * k + ema * (1 - k);
+      ema200 = +ema.toFixed(2);
+    }
+    const aboveEMA200 = ema200 !== null ? today.close > ema200 : null; // null = not enough data
 
     // ---- Consolidation: 10-day range ----
     let consolidation = '—';
@@ -129,7 +142,7 @@ function analyzeNSEData() {
     // Target = close + (risk * minRR) gives exactly 1.5 R:R
     // We use 1.5 as floor — if recent momentum suggests more, use 2.0
     // Target: floor 6%, soft-cap 8% for realistic 1-week hold
-    const rrMultiplier = (rsi !== null && rsi >= 55 && maCross.includes('✓')) ? 2.0 : 1.5;
+    const rrMultiplier = (rsi !== null && rsi >= 60 && maCross.includes('✓')) ? 2.0 : 1.5;
     let target = +(today.close + riskPerShare * rrMultiplier).toFixed(2);
     const minTarget = +(today.close * 1.06).toFixed(2); // 6% floor
     const maxTarget = +(today.close * 1.08).toFixed(2); // 8% soft-cap
@@ -148,16 +161,61 @@ function analyzeNSEData() {
     const shares  = riskPerShare > 0 ? Math.floor(maxRisk / riskPerShare) : 0;
     if (shares < 1) return; // can't even buy 1 share with 2% rule
 
-    // ---- Breakout Score ----
+    // ---- Delivery % (from auxiliary file — optional) ----
+    // High delivery = institutional/positional buying (conviction signal)
+    // Low delivery = intraday noise (reduces conviction)
+    const deliveryPct = deliveryData[sym] !== undefined ? deliveryData[sym] : null;
+
+    // ---- 52-Week High/Low ----
+    // Priority 1: Official NSE file (split/bonus-adjusted — most accurate)
+    // Priority 2: DIY from up to 252 days of Bhavcopy history (works immediately with existing data)
+    let near52WHigh = false, dist52WHigh = null, above52WLow = null, w52HighUsed = null;
+
+    let high52 = null, low52 = null;
+    if (w52Data[sym] && w52Data[sym].high52 > 0) {
+      // Use official NSE-adjusted value
+      high52 = w52Data[sym].high52;
+      low52  = w52Data[sym].low52;
+    } else if (n >= 50) {
+      // DIY fallback: max high across last 252 candles (~1 trading year)
+      // Not split-adjusted but good enough for proximity detection
+      const lookback = hist.slice(-252);
+      high52 = Math.max(...lookback.map(d => d.high || d.close));
+      low52  = Math.min(...lookback.map(d => d.low  || d.close));
+    }
+
+    if (high52 !== null && high52 > 0) {
+      dist52WHigh = +((high52 - today.close) / high52 * 100).toFixed(1);
+      near52WHigh = dist52WHigh <= 3;
+      above52WLow = low52 > 0 ? today.close > low52 * 1.10 : null;
+      w52HighUsed = high52;
+    }
+
+    // ---- Breakout Score (rebuilt from backtest data) ----
     let score = 0;
+    // Change momentum
     if (changePct >= 1)   score += 15;
     if (changePct >= 2)   score += 10;
+    // Volume — backtest shows 1.5-2x is sweet spot, >4x is exhaustion
     if (volRatio !== null && volRatio >= 1.5) score += 25;
-    if (volRatio !== null && volRatio >= 2.5) score += 10;
-    if (rsi !== null && rsi >= 50 && rsi <= 75) score += 15;
-    if (nearHigh)                               score += 10;
-    if (consolidation.includes('✓'))            score += 15;
-    if (maCross.includes('✓'))                  score += 10;
+    if (volRatio !== null && volRatio >= 2.0 && volRatio <= 4.0) score += 10; // moderate surge bonus
+    if (volRatio !== null && volRatio > 4.0)  score -= 10;  // likely exhaustion/news, penalise
+    // RSI — backtest confirms 60-80 is the best zone, 75-80 is golden
+    if (rsi !== null && rsi >= 60 && rsi <= 80) score += 15;
+    if (rsi !== null && rsi >= 75 && rsi <= 85) score += 10; // golden zone extra bonus
+    // Price quality
+    if (nearHigh)                               score += 10; // closing near day's high
+    if (consolidation.includes('✓'))            score += 15; // tight consolidation before move
+    // Trend alignment — the more MAs aligned, the stronger the signal
+    if (maCross.includes('✓'))                  score += 10; // above MA20
+    if (ma50 !== null && today.close > ma50)    score += 8;  // above MA50 = intermediate uptrend
+    if (aboveEMA200 === true)                   score += 5;  // above EMA200 = long-term uptrend
+    // Delivery % bonus/penalty (only if data loaded)
+    if (deliveryPct !== null && deliveryPct >= 50) score += 12; // institutional conviction
+    if (deliveryPct !== null && deliveryPct < 20)  score -= 8;  // pure intraday, low conviction
+    // 52W high proximity (only if 52W data loaded)
+    if (near52WHigh && dist52WHigh !== null && dist52WHigh <= 1) score += 15; // imminent breakout of 52W high
+    else if (near52WHigh)                                         score += 10; // within 3% of 52W high
     score = Math.min(score, 98);
 
     // ---- Minimum score gate ----
@@ -184,6 +242,14 @@ function analyzeNSEData() {
       rsi,
       maCross,
       consolidation,
+      ma50,
+      ema200,
+      aboveEMA200,
+      deliveryPct,
+      near52WHigh,
+      dist52WHigh,
+      w52High: w52HighUsed,
+      w52FromFile: !!(w52Data[sym]),  // true = NSE file, false = DIY from Bhavcopy
       score,
       target,
       targetPct,
@@ -348,6 +414,16 @@ function runScan() {
       const breakouts = analyzeNSEData();
       const coils     = analyzeCoilStocks();
       renderCombinedResults(breakouts, coils, allDates);
+      // Compute market breadth after scan — updates Market Health panel
+      const breadth = computeMarketBreadth();
+      if (breadth) {
+        marketHealth.adRatio          = breadth.adRatio;
+        marketHealth.pctAboveMA20     = breadth.pctAboveMA20;
+        marketHealth.pctAboveMA50     = breadth.pctAboveMA50;
+        marketHealth.rollingWR        = breadth.rollingWR;
+        marketHealth.lastComputedDate = breadth.latestDate;
+        renderMarketHealth();
+      }
     } finally {
       btn.textContent = '⚡ FULL SCAN'; btn.disabled = false;
     }
@@ -383,6 +459,7 @@ function analyzeCoilStocks() {
   const results = [];
 
   Object.entries(latestData).forEach(([sym, today]) => {
+    if (asmSymbols.has(sym)) return; // skip SEBI-regulated stocks
     if (today.close < minP || today.close > maxP) return;
 
     const hist = (symbolHistory[sym] || []).sort((a,b) => a.date.localeCompare(b.date));
@@ -625,6 +702,12 @@ function renderCombinedResults(breakouts, coils, allDates) {
   dateEl.textContent  = numDays + ' days data • Latest: ' +
     latestDate.slice(0,4) + '-' + latestDate.slice(4,6) + '-' + latestDate.slice(6,8);
 
+  // ── Tag top 5 breakouts as HIGH CONVICTION ──────────────────
+  // Based on backtest: top-ranked by score after new weights are applied
+  breakouts.forEach((s, i) => {
+    s.isHighConviction = i < 5;
+  });
+
   if (total === 0) {
     tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--text3);">No setups found — upload more data or adjust filters</td></tr>';
     mobileCards.innerHTML = '<div class="empty-state"><div class="empty-icon">📡</div><div class="empty-title">No setups found</div><div class="empty-sub">Upload more days or loosen filters</div></div>';
@@ -649,11 +732,33 @@ function renderCombinedResults(breakouts, coils, allDates) {
       ? `<button class="btn-xs" style="background:rgba(26,92,255,0.08);color:var(--accent);border:1px solid rgba(26,92,255,0.2);" onclick='prefillWeeklyCandidate(${JSON.stringify({sym:s.sym,close:s.close,entry:s.close,sl:s.sl,target:s.target})})'>📅 Plan</button>`
       : `<button class="btn-xs" style="background:rgba(124,58,237,0.08);color:#7c3aed;border:1px solid rgba(124,58,237,0.2);" onclick='prefillWeeklyCandidate(${JSON.stringify({sym:s.sym,close:s.close,entry:s.breakoutLevel,sl:s.sl,target:s.target})})'>📅 Plan</button>`;
 
+    // HIGH CONVICTION badge (top 5 breakouts only)
+    const hcBadge = s.isHighConviction
+      ? `<span style="font-size:0.55rem;font-weight:800;background:rgba(255,180,0,0.15);color:#f59e0b;border:1px solid rgba(255,180,0,0.3);border-radius:4px;padding:1px 5px;letter-spacing:0.5px;">⭐ HIGH CONVICTION</span>`
+      : '';
+
+    // EMA200 warning (soft — informational only, never blocks signal)
+    const ema200Warn = (isBreakout && s.aboveEMA200 === false)
+      ? `<div style="font-size:0.62rem;color:var(--warn);margin-top:4px;">⚠️ Below EMA200 — recovery trade, higher risk</div>`
+      : (isBreakout && s.aboveEMA200 === true)
+      ? `<div style="font-size:0.62rem;color:var(--accent2);margin-top:4px;">✓ Above EMA200 — long-term uptrend aligned</div>`
+      : '';
+
+    // 52W high proximity badge (auto-computed from Bhavcopy if NSE file not uploaded)
+    const w52Src = s.w52FromFile ? '' : ' <span style="opacity:0.6;font-size:0.55rem;">(est)</span>';
+    const w52Badge = (isBreakout && s.w52High !== null)
+      ? (s.dist52WHigh <= 1
+          ? `<div style="font-size:0.62rem;color:#a78bfa;font-weight:700;margin-top:4px;">🚀 ${s.dist52WHigh}% from 52W High ₹${s.w52High}${w52Src} — IMMINENT BREAKOUT</div>`
+          : s.near52WHigh
+          ? `<div style="font-size:0.62rem;color:var(--accent2);margin-top:4px;">📈 ${s.dist52WHigh}% from 52W High ₹${s.w52High}${w52Src}</div>`
+          : `<div style="font-size:0.62rem;color:var(--text3);margin-top:4px;">52W High: ₹${s.w52High}${w52Src} (${s.dist52WHigh}% away)</div>`)
+      : '';
+
     return `
-    <div class="stock-card" style="border-left:3px solid ${s.badgeColor};">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+    <div class="stock-card" style="border-left:3px solid ${s.badgeColor};${s.isHighConviction?'box-shadow:0 0 0 1px rgba(255,180,0,0.25);':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
         <span style="font-size:0.6rem;font-weight:700;color:${s.badgeColor};letter-spacing:0.5px;">${s.badge}</span>
-        <span style="font-size:0.6rem;color:var(--text3);">⏱ Est. ${s.estDays}</span>
+        <div style="display:flex;gap:4px;align-items:center;">${hcBadge}<span style="font-size:0.6rem;color:var(--text3);">⏱ Est. ${s.estDays}</span></div>
       </div>
       <div class="stock-card-header">
         <div>
@@ -690,7 +795,14 @@ function renderCombinedResults(breakouts, coils, allDates) {
           <div class="scm-label">Shares</div>
           <div class="scm-value">${s.shares}</div>
         </div>
+        ${isBreakout && s.deliveryPct !== null ? `
+        <div class="stock-card-metric">
+          <div class="scm-label">Delivery</div>
+          <div class="scm-value" style="color:${s.deliveryPct>=50?'var(--accent2)':s.deliveryPct>=30?'var(--text2)':'var(--warn)'};">${s.deliveryPct}%</div>
+        </div>` : ''}
       </div>
+      ${ema200Warn}
+      ${w52Badge}
       <div style="margin:8px 0 4px;">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
           <span style="font-size:0.62rem;color:var(--text3);">Score</span>
@@ -707,8 +819,17 @@ function renderCombinedResults(breakouts, coils, allDates) {
 
   let cardsHtml = '';
   if (breakouts.length > 0) {
+    const hcBreakouts  = breakouts.filter(s => s.isHighConviction);
+    const restBreakouts = breakouts.filter(s => !s.isHighConviction);
     cardsHtml += `<div style="font-size:0.65rem;font-weight:700;color:var(--accent2);letter-spacing:2px;text-transform:uppercase;padding:8px 4px 6px;">🟢 BREAKOUT — Already Moving (${breakouts.length})</div>`;
-    cardsHtml += breakouts.map(makeCard).join('');
+    if (hcBreakouts.length > 0) {
+      cardsHtml += `<div style="font-size:0.6rem;font-weight:700;color:#f59e0b;letter-spacing:1.5px;text-transform:uppercase;padding:4px 4px 4px;margin-bottom:2px;">⭐ HIGH CONVICTION — Top ${hcBreakouts.length}</div>`;
+      cardsHtml += hcBreakouts.map(makeCard).join('');
+    }
+    if (restBreakouts.length > 0) {
+      cardsHtml += `<div style="font-size:0.6rem;font-weight:700;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;padding:10px 4px 4px;border-top:1px solid var(--border);margin-top:8px;">OTHER BREAKOUTS (${restBreakouts.length})</div>`;
+      cardsHtml += restBreakouts.map(makeCard).join('');
+    }
   }
   if (coils.length > 0) {
     cardsHtml += `<div style="font-size:0.65rem;font-weight:700;color:var(--warn);letter-spacing:2px;text-transform:uppercase;padding:14px 4px 6px;border-top:1px solid var(--border);margin-top:10px;">🟡 COIL — Setting Up (${coils.length})</div>`;
@@ -736,14 +857,23 @@ function renderCombinedResults(breakouts, coils, allDates) {
       ? JSON.stringify({sym:s.sym,close:s.close,entry:s.close,sl:s.sl,target:s.target})
       : JSON.stringify({sym:s.sym,close:s.close,entry:s.breakoutLevel,sl:s.sl,target:s.target});
     const divRow = divider ? '<tr><td colspan="13" style="background:var(--bg3);padding:6px 12px;font-size:0.62rem;font-weight:700;color:var(--warn);letter-spacing:2px;text-transform:uppercase;">🟡 COIL SETUPS — Setting Up</td></tr>' : '';
+    const hcCell = s.isHighConviction ? '<span style="font-size:0.55rem;font-weight:800;background:rgba(255,180,0,0.15);color:#f59e0b;border:1px solid rgba(255,180,0,0.3);border-radius:4px;padding:1px 4px;">⭐ HC</span> ' : '';
+    const ema200Cell = (s.aboveEMA200 === true) ? '<span style="font-size:0.6rem;color:var(--accent2);">✓ EMA200</span>'
+      : (s.aboveEMA200 === false) ? '<span style="font-size:0.6rem;color:var(--warn);">⚠ EMA200</span>'
+      : '<span style="font-size:0.6rem;color:var(--text3);">—</span>';
+    const w52Cell = s.w52High !== null
+      ? (s.dist52WHigh <= 1 ? `<span style="font-size:0.6rem;color:#a78bfa;font-weight:700;">🚀 ${s.dist52WHigh}% to 52W${s.w52FromFile?'':' (est)'}</span>`
+        : s.near52WHigh     ? `<span style="font-size:0.6rem;color:var(--accent2);">📈 ${s.dist52WHigh}% to 52W${s.w52FromFile?'':' (est)'}</span>`
+        :                     `<span style="font-size:0.6rem;color:var(--text3);">52W: ${s.dist52WHigh}%${s.w52FromFile?'':' (est)'}</span>`)
+      : '';
     return divRow + `<tr style="border-left:3px solid ${s.badgeColor};">
-      <td><span class="stock-name">${s.sym}</span></td>
+      <td><span class="stock-name">${hcCell}${s.sym}</span></td>
       <td><span style="font-size:0.62rem;font-weight:700;color:${s.badgeColor};">${s.type==='breakout'?'⚡ BRK':'🌀 COIL'}</span></td>
       <td style="font-weight:700;">₹${s.close.toLocaleString('en-IN')}</td>
       <td>${changeCell}</td>
       <td>${volCell}</td>
-      <td style="color:${s.rsi&&s.rsi>=50?'var(--accent2)':'var(--warn)'};">${s.rsi||'—'}</td>
-      <td style="color:${maCol};font-size:0.72rem;">${maStr}</td>
+      <td style="color:${s.rsi&&s.rsi>=60?'var(--accent2)':s.rsi&&s.rsi>=45?'var(--warn)':'var(--danger)'};">${s.rsi||'—'}</td>
+      <td style="color:${maCol};font-size:0.72rem;">${maStr}<br>${ema200Cell}${s.deliveryPct !== null ? `<br><span style="color:${s.deliveryPct>=50?'var(--accent2)':s.deliveryPct>=30?'var(--text2)':'var(--warn)'};">📦 ${s.deliveryPct}% del</span>` : ''}${w52Cell ? `<br>${w52Cell}` : ''}</td>
       <td><div style="display:flex;align-items:center;gap:6px;"><div class="signal-fill" style="width:46px;"><div class="signal-fill-inner" style="width:${s.score}%;background:${scoreCol};"></div></div><span style="font-size:0.7rem;font-weight:700;color:${scoreCol};">${s.score}%</span></div></td>
       <td class="change-pos">₹${s.target.toLocaleString('en-IN')}<div style="font-size:0.6rem;color:var(--text3);">+${s.targetPct}%</div></td>
       <td class="change-neg">₹${s.sl.toLocaleString('en-IN')}<div style="font-size:0.6rem;color:var(--text3);">-${s.slPct}%</div></td>
@@ -771,4 +901,83 @@ function renderCombinedResults(breakouts, coils, allDates) {
   if (sigEl) sigEl.textContent = total;
 
   showNotif('⚡ Scan Complete', `${breakouts.length} breakout · ${coils.length} coil setups found`);
+}
+// =====================================================================
+//  MARKET BREADTH — Auto-computed on every scan (Phase 3)
+//  Derives 4 breadth metrics from current nseDataByDate:
+//    adRatio      — today's advance/decline ratio
+//    pctAboveMA20 — % of EQ stocks above their 20-day MA
+//    pctAboveMA50 — % of EQ stocks above their 50-day MA
+//    rollingWR    — % of last 20 days where more stocks advanced than declined
+// =====================================================================
+function computeMarketBreadth() {
+  const allDates = Object.keys(nseDataByDate).sort().filter(k => !k.startsWith('UNKNOWN'));
+  if (allDates.length < 2) return null;
+
+  const latestDate = allDates[allDates.length - 1];
+  const latestData = nseDataByDate[latestDate];
+  if (!latestData) return null;
+
+  // Build symbol history once (shared with scan — same pattern)
+  const symbolHistory = {};
+  allDates.forEach(d => {
+    Object.entries(nseDataByDate[d]).forEach(([sym, data]) => {
+      if (!symbolHistory[sym]) symbolHistory[sym] = [];
+      symbolHistory[sym].push({ date: d, close: data.close, prev: data.prev });
+    });
+  });
+
+  let advances = 0, declines = 0;
+  let aboveMA20count = 0, ma20total = 0;
+  let aboveMA50count = 0, ma50total = 0;
+
+  Object.entries(latestData).forEach(([sym, today]) => {
+    if (!today.close || today.close <= 0) return;
+
+    // A/D — count as advance if close > prev by more than 0.25% (filters noise)
+    const prevClose = today.prev > 0 ? today.prev : today.close;
+    const chgPct = prevClose > 0 ? (today.close - prevClose) / prevClose * 100 : 0;
+    if (chgPct >  0.25) advances++;
+    else if (chgPct < -0.25) declines++;
+
+    // MA breadth — requires history
+    const hist = (symbolHistory[sym] || []).sort((a, b) => a.date.localeCompare(b.date));
+    const n = hist.length;
+    if (n >= 20) {
+      const ma20 = hist.slice(-20).reduce((s, d) => s + d.close, 0) / 20;
+      aboveMA20count += today.close > ma20 ? 1 : 0;
+      ma20total++;
+    }
+    if (n >= 50) {
+      const ma50 = hist.slice(-50).reduce((s, d) => s + d.close, 0) / 50;
+      aboveMA50count += today.close > ma50 ? 1 : 0;
+      ma50total++;
+    }
+  });
+
+  const adRatio = declines > 0 ? +(advances / declines).toFixed(2) : (advances > 0 ? 9.99 : 1.00);
+
+  const pctAboveMA20 = ma20total > 0 ? Math.round(aboveMA20count / ma20total * 100) : null;
+  const pctAboveMA50 = ma50total > 0 ? Math.round(aboveMA50count / ma50total * 100) : null;
+
+  // Rolling 20-day market quality: % of last 20 sessions where A/D > 1
+  // We re-compute A/D for each of the last 20 days (fast — just prev/close fields)
+  const last20dates = allDates.slice(-21, -1); // excludes today
+  let bullishDays = 0;
+  last20dates.forEach(d => {
+    const dayData = nseDataByDate[d];
+    if (!dayData) return;
+    let adv = 0, dec = 0;
+    Object.values(dayData).forEach(s => {
+      if (!s.close || !s.prev || s.prev <= 0) return;
+      const c = (s.close - s.prev) / s.prev * 100;
+      if (c >  0.25) adv++;
+      else if (c < -0.25) dec++;
+    });
+    if (dec > 0 && adv / dec > 1) bullishDays++;
+    else if (dec === 0 && adv > 0) bullishDays++;
+  });
+  const rollingWR = last20dates.length > 0 ? Math.round(bullishDays / last20dates.length * 100) : null;
+
+  return { adRatio, pctAboveMA20, pctAboveMA50, rollingWR, latestDate };
 }

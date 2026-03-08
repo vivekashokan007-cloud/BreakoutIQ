@@ -6,6 +6,42 @@ const NSE_STORAGE_KEY  = 'breakoutiq_nse_data';   // kept for migration only
 const NSE_NAMES_KEY    = 'breakoutiq_nse_names';
 const NSE_SAVEDAT_KEY  = 'breakoutiq_nse_savedat';
 
+// ===================== AUXILIARY DATA (Phase 2 + 4) =====================
+const DELIVERY_KEY     = 'breakoutiq_delivery';   // { SYM: deliveryPct }
+const ASM_KEY          = 'breakoutiq_asm';        // JSON array of ASM/GSM symbols
+const W52_KEY          = 'breakoutiq_52w';        // { SYM: { high52, low52 } }
+
+// ===================== MARKET HEALTH (Phase 3) =====================
+const MARKET_HEALTH_KEY = 'breakoutiq_market_health';
+
+// marketHealth: merged state — manual inputs + auto-computed breadth
+// Manual: saved by user each Saturday from Upstox / NSE website
+// Auto:   computed from Bhavcopy data on every scan
+let marketHealth = {
+  // — Manual (user-entered) —
+  niftyClose : null,   // NIFTY 50 weekly close (number)
+  indiaVix   : null,   // India VIX reading (number)
+  fiiFlow    : null,   // FII net flow ₹Cr (positive = buying, negative = selling)
+  // — Auto-computed on every scan —
+  adRatio       : null, // advance / decline ratio (today)
+  pctAboveMA20  : null, // % of EQ stocks above MA20
+  pctAboveMA50  : null, // % of EQ stocks above MA50
+  rollingWR     : null, // % of last 20 days with A/D > 1 (market quality proxy)
+  lastComputedDate : null
+};
+
+// Delivery data: loaded from CM Security-wise Delivery Positions file
+// { 'RELIANCE': 64.2, 'INFY': 38.1, ... }
+let deliveryData = {};
+
+// ASM/GSM symbols: stocks under SEBI enhanced surveillance — excluded from all scans
+// Loaded from NSE ASM/GSM list file
+let asmSymbols = new Set();
+
+// 52-week high/low: official NSE-adjusted values (split/bonus-adjusted, more accurate than DIY)
+// { 'RELIANCE': { high52: 3217.90, low52: 2220.35 }, ... }
+let w52Data = {};
+
 // ===================== DATA & STATE =====================
 let watchlist = JSON.parse(localStorage.getItem('watchlist') || '[]');
 let trades = JSON.parse(localStorage.getItem('trades') || '[]');
